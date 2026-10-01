@@ -67,11 +67,14 @@ textarea{min-height:110px}
 .pick{display:flex;justify-content:space-between;gap:10px;align-items:center;width:100%;text-align:left;background:none;border:0;border-top:1px solid var(--line);padding:12px 0;cursor:pointer}
 .tbl{overflow-x:auto}
 table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:.88rem}
-th{text-align:left;font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);padding:6px 4px;font-weight:600}
+th{white-space:nowrap;text-align:left;font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);padding:6px 4px;font-weight:600}
 td{padding:9px 4px;border-top:1px solid var(--line);vertical-align:top}
 td.n,th.n{text-align:right}
 tr.me td{background:var(--soft);font-weight:700}
 tr.click{cursor:pointer}
+tr.click:hover td,tr.click:active td{background:var(--soft)}
+td.go{font-size:1.5rem;line-height:1;color:var(--muted);padding-left:2px;padding-right:0;vertical-align:middle;text-align:right}
+.hint{margin:0;padding:8px 12px;border-radius:8px;background:var(--soft);font-size:.85rem;font-weight:600}
 .rk{display:inline-grid;place-items:center;min-width:24px;height:24px;border-radius:50%;background:var(--primary);color:var(--primaryfg);font-size:.72rem;font-weight:700;padding:0 4px}
 .sheet{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10;display:flex;align-items:flex-end;justify-content:center}
 .sheet>.card{width:100%;max-width:640px;max-height:85vh;overflow:auto;border-radius:16px 16px 0 0;padding-bottom:calc(16px + env(safe-area-inset-bottom,0px))}

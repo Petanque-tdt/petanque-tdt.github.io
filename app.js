@@ -26,7 +26,7 @@
       rank: 'Classement', w: 'V', l: 'D', elo: 'Pts', buch: 'Bh', diff: '+/−', rankHelp: 'Victoires, puis points Elo (battre une équipe forte rapporte plus), puis Buchholz (Bh, force des adversaires), puis différence de points.',
       rankHelpElo: 'Classement aux points Elo, puis victoires, puis différence de points.',
       roundN: 'Tour', allRounds: 'Tours', noRound: 'Aucun tour généré pour l’instant.', schedule: 'Planning',
-      stValidated: 'validé', stSubmitted: 'à confirmer', stDisputed: 'contesté', stNone: 'en jeu', stLive: 'en direct', liveUpd: 'Mettre à jour en direct', liveHelp: 'Mets le score à jour au fil des mènes : tout le monde le voit en direct. Envoie le score final à la fin du match.', sendFinal: 'Envoyer le score final', liveNow: 'Score en direct', sortRank: 'Haut du classement', sortTerrain: 'Par terrain', findPlayer: 'Trouver un joueur…', noMatch: 'Aucun match trouvé.', liveSaved: 'Score en direct mis à jour', stats: 'Statistiques', close: 'Fermer',
+      stValidated: 'validé', stSubmitted: 'à confirmer', stDisputed: 'contesté', stNone: 'en jeu', stLive: 'en direct', liveUpd: 'Mettre à jour en direct', liveHelp: 'Le score est partagé en direct automatiquement à chaque modification. Envoie le score final à la fin du match.', tapHint: 'Touche une équipe pour voir ses statistiques et tous ses matchs.', sendFinal: 'Envoyer le score final', liveNow: 'Score en direct', sortRank: 'Haut du classement', sortTerrain: 'Par terrain', findPlayer: 'Trouver un joueur…', noMatch: 'Aucun match trouvé.', liveSaved: 'Score en direct mis à jour', stats: 'Statistiques', close: 'Fermer',
       players: 'Joueurs', saved: 'Enregistré', demo: 'Mode démo : données enregistrées seulement sur cet appareil (Firebase non configuré).', offline: 'Connexion perdue, nouvelle tentative…',
       pin: 'Code organisateur', enter: 'Entrer', badPin: 'Code incorrect', logout: 'Quitter le mode organisateur'
     },
@@ -44,7 +44,7 @@
       rank: 'Standings', w: 'W', l: 'L', elo: 'Pts', buch: 'Bh', diff: '+/−', rankHelp: 'Wins, then Elo points (beating a strong team earns more), then Buchholz (Bh, strength of opponents), then point difference.',
       rankHelpElo: 'Ranked by Elo points, then wins, then point difference.',
       roundN: 'Round', allRounds: 'Rounds', noRound: 'No round generated yet.', schedule: 'Schedule',
-      stValidated: 'confirmed', stSubmitted: 'to confirm', stDisputed: 'disputed', stNone: 'in play', stLive: 'live', liveUpd: 'Update live score', liveHelp: 'Update the score after each end so everyone can follow live. Send the final score when the match is over.', sendFinal: 'Send final score', liveNow: 'Live score', sortRank: 'Top of the table', sortTerrain: 'By pitch', findPlayer: 'Find a player…', noMatch: 'No match found.', liveSaved: 'Live score updated', stats: 'Statistics', close: 'Close',
+      stValidated: 'confirmed', stSubmitted: 'to confirm', stDisputed: 'disputed', stNone: 'in play', stLive: 'live', liveUpd: 'Update live score', liveHelp: 'The score is shared live automatically each time you change it. Send the final score when the match is over.', tapHint: 'Tap a team to see its statistics and all its matches.', sendFinal: 'Send final score', liveNow: 'Live score', sortRank: 'Top of the table', sortTerrain: 'By pitch', findPlayer: 'Find a player…', noMatch: 'No match found.', liveSaved: 'Live score updated', stats: 'Statistics', close: 'Close',
       players: 'Players', saved: 'Saved', demo: 'Demo mode: data saved on this device only (Firebase not configured).', offline: 'Connection lost, retrying…',
       pin: 'Organiser code', enter: 'Enter', badPin: 'Wrong code', logout: 'Leave organiser mode'
     }
@@ -207,7 +207,6 @@
       if (res && res.status === 'live') html += `<p class="small"><span class="chip warn">${t('liveNow')} ${mine}:${theirs}</span> <span class="muted">${ago(res.at)}</span></p>`;
       html += `<div class="lbl">${t('enterScore')}</div><div class="score">
         ${stepper(m.id, 'me', t('us'), d.me)}<div class="big">:</div>${stepper(m.id, 'them', t('them'), d.them)}</div>
-        <button type="button" class="btn ghost full" data-act="live" data-id="${m.id}">${t('liveUpd')}</button>
         <button type="button" class="btn full" data-act="send" data-id="${m.id}">${t('sendFinal')}</button>
         <p class="muted small">${t('liveHelp')}</p>`;
     }
@@ -277,8 +276,9 @@
     if (!state.teams.length) return `<div class="card"><p>${t('noTeams')}</p></div>`;
     const R = ranked(), T = tById();
     return `<div class="card"><h2>${t('rank')}</h2><p class="muted small">${state.cfg.rankMode === 'elo' ? t('rankHelpElo') : t('rankHelp')}</p>
-      <div class="tbl"><table><thead><tr><th>#</th><th>${t('team')}</th><th class="n">${t('w')}</th><th class="n">${t('l')}</th><th class="n">${t('elo')}</th><th class="n">${t('buch')}</th><th class="n">${t('diff')}</th></tr></thead><tbody>
-      ${R.map(s => `<tr class="click ${s.id === myTeam ? 'me' : ''}" data-act="sheet" data-id="${s.id}"><td><span class="rk">${s.rank}</span></td><td><b>${String(s.num).padStart(2, '0')}</b> <span class="names">${teamNames(T[s.id], true)}</span>${pastLine(s)}</td><td class="n">${s.w}</td><td class="n">${s.l}</td><td class="n">${Math.round(s.elo)}</td><td class="n">${s.buch}</td><td class="n">${s.diff > 0 ? '+' : ''}${s.diff}</td></tr>`).join('')}
+      <p class="hint">${t('tapHint')}</p>
+      <div class="tbl"><table><thead><tr><th>#</th><th>${t('team')}</th><th class="n">${t('w')}</th><th class="n">${t('l')}</th><th class="n">${t('elo')}</th><th class="n">${t('buch')}</th><th class="n">${t('diff')}</th><th aria-hidden="true"></th></tr></thead><tbody>
+      ${R.map(s => `<tr class="click ${s.id === myTeam ? 'me' : ''}" data-act="sheet" data-id="${s.id}" tabindex="0" role="button" aria-label="${teamLabel(T[s.id])}"><td><span class="rk">${s.rank}</span></td><td><b>${String(s.num).padStart(2, '0')}</b> <span class="names">${teamNames(T[s.id], true)}</span>${pastLine(s)}</td><td class="n">${s.w}</td><td class="n">${s.l}</td><td class="n">${Math.round(s.elo)}</td><td class="n">${s.buch}</td><td class="n">${s.diff > 0 ? '+' : ''}${s.diff}</td><td class="go" aria-hidden="true">›</td></tr>`).join('')}
       </tbody></table></div></div>`;
   }
   function pastLine(s) {
@@ -492,33 +492,40 @@
       const n = parseInt(el.value, 10);
       d[el.dataset.k] = Number.isNaN(n) ? 0 : Math.min(13, Math.max(0, n));
       if (el.value !== '' && String(d[el.dataset.k]) !== el.value) el.value = d[el.dataset.k];
+      scheduleLive(el.dataset.score);
     }
   });
   document.addEventListener('focusin', e => { if (e.target.dataset && e.target.dataset.score) { try { e.target.select(); } catch (x) { } } });
   document.addEventListener('change', e => { const el = e.target; if (el.dataset && el.dataset.act === 'present') actions.present(el, el.dataset.id); });
-  document.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.classList && e.target.classList.contains('pchip') && e.target.dataset.act === 'chip') { e.preventDefault(); actions.chip(e.target, e.target.dataset.id); } if (e.key === 'Enter' && e.target.id === 'pin') actions.login(); });
+  document.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.classList && e.target.classList.contains('pchip') && e.target.dataset.act === 'chip') { e.preventDefault(); actions.chip(e.target, e.target.dataset.id); } if (e.key === 'Enter' && e.target.id === 'pin') actions.login(); if (e.key === 'Enter' && e.target.matches && e.target.matches('tr.click')) actions.sheet(e.target, e.target.dataset.id); });
 
   const val = id => (document.getElementById(id) || {}).value;
+  const liveTimers = {};
+  // envoi automatique du score en direct, 1 s après la dernière modification
+  function scheduleLive(id) { clearTimeout(liveTimers[id]); liveTimers[id] = setTimeout(() => actions.live(null, id), 1000); }
   const actions = {
     view(el) { view = el.dataset.v; ls.set('view', view === 'admin' ? 'rules' : view); window.scrollTo(0, 0); render(); },
     pick(el, id) { myTeam = id; ls.set('team', id); searchQ = ''; render(); },
     unpick() { myTeam = null; ls.set('team', null); render(); },
-    step(el, id) { const d = draft[id]; d[el.dataset.k] = Math.min(13, Math.max(0, d[el.dataset.k] + Number(el.dataset.d))); render(); },
+    step(el, id) { const d = draft[id]; d[el.dataset.k] = Math.min(13, Math.max(0, d[el.dataset.k] + Number(el.dataset.d))); render(); scheduleLive(id); },
     editscore(el, id) { editing[id] = true; render(); },
     send(el, id) {
       const r = curRound(), m = r.matches.find(x => x.id === id), d = draft[id];
       const mineA = m.a === myTeam, sa = mineA ? d.me : d.them, sb = mineA ? d.them : d.me;
       const err = PL.validateScore(sa, sb);
       if (err) { toast(err === 'tie' ? t('eTie') : t('eRange')); return; }
-      editing[id] = false;
+      editing[id] = false; clearTimeout(liveTimers[id]);
       store.setResult(id, { a: m.a, b: m.b, sa, sb, by: myTeam, status: 'submitted', at: Date.now() }).then(() => toast(t('saved')));
     },
     live(el, id) {
-      const r = curRound(), m = r.matches.find(x => x.id === id), d = draft[id];
+      const r = curRound(), m = r && r.matches.find(x => x.id === id), d = draft[id];
+      if (!m || !d) return;
+      const cur = results[id];
+      if (cur && cur.a === m.a && cur.status && cur.status !== 'live') return; // déjà envoyé / validé : on ne revient pas en direct
       const mineA = m.a === myTeam, sa = mineA ? d.me : d.them, sb = mineA ? d.them : d.me;
       if (!(sa >= 0 && sb >= 0 && sa <= 13 && sb <= 13)) { toast(t('eRange')); return; }
       const at = Date.now(); d.src = at;
-      store.setResult(id, { a: m.a, b: m.b, sa, sb, by: myTeam, status: 'live', at }).then(() => toast(t('liveSaved')));
+      store.setResult(id, { a: m.a, b: m.b, sa, sb, by: myTeam, status: 'live', at });
     },
     livesort(el) { liveSort = el.dataset.k; render(); },
     adminquick(el, id) {
