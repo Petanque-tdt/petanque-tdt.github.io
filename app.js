@@ -13,7 +13,7 @@
   // ---------------- textes FR / EN ----------------
   const I = {
     fr: {
-      tabMe: 'Mon match', tabRound: 'Tours', tabRank: 'Classement', tabRules: 'Règles', admin: 'Organisateur',
+      tabMe: 'Mon match', tabRound: 'Direct', tabRank: 'Classement', tabRules: 'Règles', admin: 'Organisateur',
       pickTeam: 'Quelle est ton équipe ?', pickHelp: 'Cherche ton nom. L’app s’en souviendra sur ce téléphone.',
       search: 'Nom ou prénom', team: 'Équipe', change: 'Changer d’équipe', noTeams: 'Les équipes ne sont pas encore formées. Reviens un peu avant 17h15.',
       round: 'Tour', of: 'sur', terrain: 'Terrain', vs: 'contre', waitRound: 'En attente du prochain tour', nextAt: 'Prochain tour prévu à',
@@ -26,12 +26,12 @@
       rank: 'Classement', w: 'V', l: 'D', elo: 'Pts', buch: 'Bh', diff: '+/−', rankHelp: 'Victoires, puis points Elo (battre une équipe forte rapporte plus), puis Buchholz (Bh, force des adversaires), puis différence de points.',
       rankHelpElo: 'Classement aux points Elo, puis victoires, puis différence de points.',
       roundN: 'Tour', allRounds: 'Tours', noRound: 'Aucun tour généré pour l’instant.', schedule: 'Planning',
-      stValidated: 'validé', stSubmitted: 'à confirmer', stDisputed: 'contesté', stNone: 'en jeu', stats: 'Statistiques', close: 'Fermer',
+      stValidated: 'validé', stSubmitted: 'à confirmer', stDisputed: 'contesté', stNone: 'en jeu', stLive: 'en direct', liveUpd: 'Mettre à jour en direct', liveHelp: 'Mets le score à jour au fil des mènes : tout le monde le voit en direct. Envoie le score final à la fin du match.', sendFinal: 'Envoyer le score final', liveNow: 'Score en direct', sortRank: 'Haut du classement', sortTerrain: 'Par terrain', findPlayer: 'Trouver un joueur…', noMatch: 'Aucun match trouvé.', liveSaved: 'Score en direct mis à jour', stats: 'Statistiques', close: 'Fermer',
       players: 'Joueurs', saved: 'Enregistré', demo: 'Mode démo : données enregistrées seulement sur cet appareil (Firebase non configuré).', offline: 'Connexion perdue, nouvelle tentative…',
       pin: 'Code organisateur', enter: 'Entrer', badPin: 'Code incorrect', logout: 'Quitter le mode organisateur'
     },
     en: {
-      tabMe: 'My match', tabRound: 'Rounds', tabRank: 'Standings', tabRules: 'Rules', admin: 'Organiser',
+      tabMe: 'My match', tabRound: 'Live', tabRank: 'Standings', tabRules: 'Rules', admin: 'Organiser',
       pickTeam: 'Which team are you on?', pickHelp: 'Search your name. The app will remember it on this phone.',
       search: 'First or last name', team: 'Team', change: 'Change team', noTeams: 'Teams have not been formed yet. Check back shortly before 5:15 pm.',
       round: 'Round', of: 'of', terrain: 'Pitch', vs: 'vs', waitRound: 'Waiting for the next round', nextAt: 'Next round planned at',
@@ -44,7 +44,7 @@
       rank: 'Standings', w: 'W', l: 'L', elo: 'Pts', buch: 'Bh', diff: '+/−', rankHelp: 'Wins, then Elo points (beating a strong team earns more), then Buchholz (Bh, strength of opponents), then point difference.',
       rankHelpElo: 'Ranked by Elo points, then wins, then point difference.',
       roundN: 'Round', allRounds: 'Rounds', noRound: 'No round generated yet.', schedule: 'Schedule',
-      stValidated: 'confirmed', stSubmitted: 'to confirm', stDisputed: 'disputed', stNone: 'in play', stats: 'Statistics', close: 'Close',
+      stValidated: 'confirmed', stSubmitted: 'to confirm', stDisputed: 'disputed', stNone: 'in play', stLive: 'live', liveUpd: 'Update live score', liveHelp: 'Update the score after each end so everyone can follow live. Send the final score when the match is over.', sendFinal: 'Send final score', liveNow: 'Live score', sortRank: 'Top of the table', sortTerrain: 'By pitch', findPlayer: 'Find a player…', noMatch: 'No match found.', liveSaved: 'Live score updated', stats: 'Statistics', close: 'Close',
       players: 'Players', saved: 'Saved', demo: 'Demo mode: data saved on this device only (Firebase not configured).', offline: 'Connection lost, retrying…',
       pin: 'Organiser code', enter: 'Enter', badPin: 'Wrong code', logout: 'Leave organiser mode'
     }
@@ -95,7 +95,7 @@
   let view = ls.get('view') || 'me';
   let myTeam = ls.get('team');
   let isAdmin = ls.get('admin') === '1';
-  let searchQ = '', draft = {}, editing = {}, selChip = null, armed = {}, sheetTeam = null, roundView = null, adminTab = ls.get('atab') || 'tour';
+  let searchQ = '', liveQ = '', liveSort = 'rank', draft = {}, editing = {}, selChip = null, armed = {}, sheetTeam = null, roundView = null, adminTab = ls.get('atab') || 'tour';
   const store = makeStore();
   if (store.kind === 'demo') showBanner(t('demo'));
 
@@ -200,14 +200,34 @@
         <p class="muted small">${t('waitConfirm')}</p><button type="button" class="btn ghost" data-act="editscore" data-id="${m.id}">${t('edit')}</button>`;
     } else {
       if (res && res.status === 'disputed') html += `<p class="chip bad">${t('disputed')}</p>`;
-      const d = draft[m.id] || (draft[m.id] = { me: mine != null ? mine : 0, them: theirs != null ? theirs : 0 });
+      // brouillon : resynchronisé quand l'autre équipe met à jour le score en direct
+      let d = draft[m.id];
+      const focused = document.activeElement && document.activeElement.dataset && document.activeElement.dataset.score === m.id;
+      if (!d || (res && res.status === 'live' && d.src !== res.at && !focused)) d = draft[m.id] = { me: mine != null ? mine : 0, them: theirs != null ? theirs : 0, src: res ? res.at : null };
+      if (res && res.status === 'live') html += `<p class="small"><span class="chip warn">${t('liveNow')} ${mine}:${theirs}</span> <span class="muted">${ago(res.at)}</span></p>`;
       html += `<div class="lbl">${t('enterScore')}</div><div class="score">
         ${stepper(m.id, 'me', t('us'), d.me)}<div class="big">:</div>${stepper(m.id, 'them', t('them'), d.them)}</div>
-        <button type="button" class="btn full" data-act="send" data-id="${m.id}">${t('send')}</button>`;
+        <button type="button" class="btn ghost full" data-act="live" data-id="${m.id}">${t('liveUpd')}</button>
+        <button type="button" class="btn full" data-act="send" data-id="${m.id}">${t('sendFinal')}</button>
+        <p class="muted small">${t('liveHelp')}</p>`;
     }
     return html + '</div>';
   }
   const stepper = (id, k, label, v) => `<div class="stepper"><label class="lbl" for="sc_${id}_${k}">${label}</label><input class="val" type="number" inputmode="numeric" pattern="[0-9]*" min="0" max="13" id="sc_${id}_${k}" data-score="${id}" data-k="${k}" data-keep="no" value="${v}" aria-label="${label}"><div class="ctl"><button type="button" aria-label="−1" data-act="step" data-id="${id}" data-k="${k}" data-d="-1">−</button><button type="button" aria-label="+1" data-act="step" data-id="${id}" data-k="${k}" data-d="1">+</button></div></div>`;
+  function ago(ts) {
+    if (!ts) return '';
+    const m = Math.max(0, Math.round((Date.now() - ts) / 60000));
+    return lang === 'fr' ? (m < 1 ? "à l'instant" : `il y a ${m} min`) : (m < 1 ? 'just now' : `${m} min ago`);
+  }
+  // pastille d'état d'un match (vue publique et organisateur)
+  function statusChip(res) {
+    const st = res ? res.status : 'none';
+    if (st === 'validated') return `<span class="chip ok">${res.sa}:${res.sb}</span>`;
+    if (st === 'submitted') return `<span class="chip warn">${res.sa}:${res.sb} · ${t('stSubmitted')}</span>`;
+    if (st === 'live') return `<span class="chip warn">● ${res.sa}:${res.sb} · ${t('stLive')}</span>`;
+    if (st === 'disputed') return `<span class="chip bad">${t('stDisputed')}</span>`;
+    return `<span class="chip soft">${t('stNone')}</span>`;
+  }
   function clockHtml(r) {
     if (!r.startedAt) return `<p class="muted small">${t('notStarted')}</p>`;
     return `<div class="row between"><span class="lbl">${t('remaining')}</span><span class="clock" data-clock="${r.startedAt}">--:--</span></div><p class="small muted" data-timeup hidden>${t('timeUp')}</p>`;
@@ -231,15 +251,24 @@
     const n = roundView || (curRound() && curRound().n);
     const r = state.rounds.find(y => y.n === n);
     if (!r) return html + `<div class="card"><p>${t('noRound')}</p></div>`;
-    const T = tById();
-    html += `<div class="card"><div class="row between"><h2>${t('round')} ${r.n}</h2>${r === curRound() ? clockHtml(r).replace('<p class="small muted" data-timeup hidden>' + t('timeUp') + '</p>', '') : ''}</div><div class="list">` +
-      r.matches.map(m => {
-        const res = resultFor(m), st = res ? res.status : 'none';
-        const chip = st === 'validated' ? `<span class="chip ok">${res.sa}:${res.sb}</span>` : st === 'submitted' ? `<span class="chip warn">${res.sa}:${res.sb} ${t('stSubmitted')}</span>` : st === 'disputed' ? `<span class="chip bad">${t('stDisputed')}</span>` : `<span class="chip soft">${t('stNone')}</span>`;
+    const T = tById(), P = pById();
+    const Rk = Object.fromEntries(ranked().map(x => [x.id, x]));
+    const q = liveQ.trim().toLowerCase();
+    let ms = r.matches.slice();
+    if (q) ms = ms.filter(m => [m.a, m.b].some(id => T[id] && T[id].p.some(pid => pName(P[pid]).toLowerCase().includes(q))) || String(m.terrain) === q);
+    if (liveSort === 'rank') ms.sort((x, y) => Math.min(Rk[x.a].rank, Rk[x.b].rank) - Math.min(Rk[y.a].rank, Rk[y.b].rank));
+    else ms.sort((x, y) => x.terrain - y.terrain);
+    const side = id => `<div><b>${teamLabel(T[id])}</b> <span class="muted small">#${Rk[id].rank} · ${Rk[id].w}-${Rk[id].l}</span><span class="names" style="display:block">${teamNames(T[id], true)}</span></div>`;
+    html += `<div class="card"><div class="row between"><h2>${t('round')} ${r.n}</h2>${r === curRound() ? clockHtml(r).replace('<p class="small muted" data-timeup hidden>' + t('timeUp') + '</p>', '') : ''}</div>
+      <div class="row"><button type="button" class="pchip ${liveSort === 'rank' ? 'sel' : ''}" data-act="livesort" data-k="rank">${t('sortRank')}</button><button type="button" class="pchip ${liveSort === 'terrain' ? 'sel' : ''}" data-act="livesort" data-k="terrain">${t('sortTerrain')}</button></div>
+      <input type="search" id="lq" placeholder="${t('findPlayer')}" autocomplete="off" value="${esc(liveQ)}" data-keep="no">
+      <div class="list">` +
+      (ms.length ? ms.map(m => {
+        const res = resultFor(m);
         const mine = m.a === myTeam || m.b === myTeam;
-        return `<div style="${mine ? 'background:var(--soft);padding-inline:8px;border-radius:8px' : ''}"><div class="row between"><b>${t('terrain')} ${m.terrain}${surfaceOf(m.terrain) ? ` <span class="muted small">· ${esc(surfaceOf(m.terrain))}</span>` : ''}</b>${chip}</div>
-          <div class="vs small"><div><b>${teamLabel(T[m.a])}</b><span class="names">${teamNames(T[m.a], true)}</span></div><div class="muted">${t('vs')}</div><div><b>${teamLabel(T[m.b])}</b><span class="names">${teamNames(T[m.b], true)}</span></div></div></div>`;
-      }).join('') + (r.bye ? `<div class="row between"><span>${teamLabel(T[r.bye])} <span class="names">${teamNames(T[r.bye], true)}</span></span><span class="chip soft">BYE</span></div>` : '') + '</div></div>';
+        return `<div style="${mine ? 'background:var(--soft);padding-inline:8px;border-radius:8px' : ''}"><div class="row between"><b>${t('terrain')} ${m.terrain}${surfaceOf(m.terrain) ? ` <span class="muted small">· ${esc(surfaceOf(m.terrain))}</span>` : ''}</b>${statusChip(res)}</div>
+          <div class="vs small">${side(m.a)}<div class="muted">${t('vs')}</div>${side(m.b)}</div></div>`;
+      }).join('') : `<p class="muted">${t('noMatch')}</p>`) + (r.bye && !q ? `<div class="row between"><span>${teamLabel(T[r.bye])} <span class="names">${teamNames(T[r.bye], true)}</span></span><span class="chip soft">BYE</span></div>` : '') + '</div></div>';
     return html;
   }
 
@@ -249,8 +278,15 @@
     const R = ranked(), T = tById();
     return `<div class="card"><h2>${t('rank')}</h2><p class="muted small">${state.cfg.rankMode === 'elo' ? t('rankHelpElo') : t('rankHelp')}</p>
       <div class="tbl"><table><thead><tr><th>#</th><th>${t('team')}</th><th class="n">${t('w')}</th><th class="n">${t('l')}</th><th class="n">${t('elo')}</th><th class="n">${t('buch')}</th><th class="n">${t('diff')}</th></tr></thead><tbody>
-      ${R.map(s => `<tr class="click ${s.id === myTeam ? 'me' : ''}" data-act="sheet" data-id="${s.id}"><td><span class="rk">${s.rank}</span></td><td><b>${String(s.num).padStart(2, '0')}</b> <span class="names">${teamNames(T[s.id], true)}</span></td><td class="n">${s.w}</td><td class="n">${s.l}</td><td class="n">${Math.round(s.elo)}</td><td class="n">${s.buch}</td><td class="n">${s.diff > 0 ? '+' : ''}${s.diff}</td></tr>`).join('')}
+      ${R.map(s => `<tr class="click ${s.id === myTeam ? 'me' : ''}" data-act="sheet" data-id="${s.id}"><td><span class="rk">${s.rank}</span></td><td><b>${String(s.num).padStart(2, '0')}</b> <span class="names">${teamNames(T[s.id], true)}</span>${pastLine(s)}</td><td class="n">${s.w}</td><td class="n">${s.l}</td><td class="n">${Math.round(s.elo)}</td><td class="n">${s.buch}</td><td class="n">${s.diff > 0 ? '+' : ''}${s.diff}</td></tr>`).join('')}
       </tbody></table></div></div>`;
+  }
+  function pastLine(s) {
+    if (!s.hist.length) return '';
+    const T = tById(), nn = id => String((T[id] || {}).num || '').padStart(2, '0');
+    return `<div class="past">${s.hist.map(h => h.bye ? `<span class="chip soft">T${h.round} BYE</span>`
+      : h.pending ? `<span class="chip soft">T${h.round} … vs ${nn(h.opp)}</span>`
+      : `<span class="chip ${h.win ? 'ok' : 'bad'}">T${h.round} ${h.me}:${h.them} vs ${nn(h.opp)}</span>`).join(' ')}</div>`;
   }
   function renderSheet() {
     const el = $('#sheet');
@@ -353,10 +389,10 @@
       const T = tById();
       h += `<div class="card"><h3>Scores du tour ${r.n}</h3><div class="list">${r.matches.map(m => {
         const res = resultFor(m), stt = res ? res.status : 'none';
-        return `<div><div class="row between"><b>${t('terrain')} ${m.terrain}</b>${stt === 'validated' ? '<span class="chip ok">validé</span>' : stt === 'disputed' ? '<span class="chip bad">contesté</span>' : stt === 'submitted' ? '<span class="chip warn">à confirmer</span>' : '<span class="chip soft">en jeu</span>'}</div>
+        return `<div><div class="row between"><b>${t('terrain')} ${m.terrain}</b>${statusChip(res)}</div>
           <div class="grid2 small"><span>${teamLabel(T[m.a])} <span class="names">${teamNames(T[m.a], true)}</span></span><span>${teamLabel(T[m.b])} <span class="names">${teamNames(T[m.b], true)}</span></span>
           <input type="number" min="0" max="13" id="sa_${m.id}" value="${res ? res.sa : ''}" inputmode="numeric"><input type="number" min="0" max="13" id="sb_${m.id}" value="${res ? res.sb : ''}" inputmode="numeric"></div>
-          <button type="button" class="btn sm ghost" data-act="adminscore" data-id="${m.id}">Valider ce score</button></div>`;
+          <div class="row">${res && (stt === 'submitted' || stt === 'live' || stt === 'disputed') && !PL.validateScore(res.sa, res.sb) ? `<button type="button" class="btn sm" data-act="adminquick" data-id="${m.id}">Valider ${res.sa}:${res.sb}</button>` : ''}<button type="button" class="btn sm ghost" data-act="adminscore" data-id="${m.id}">Valider les cases</button></div></div>`;
       }).join('')}</div></div>`;
     }
     h += `<div class="card"><h3>Sauvegarde</h3><button type="button" class="btn ghost" data-act="export">Exporter les données (JSON)</button>
@@ -448,6 +484,7 @@
   });
   document.addEventListener('input', e => {
     if (e.target.id === 'q') { searchQ = e.target.value; render(); return; }
+    if (e.target.id === 'lq') { liveQ = e.target.value; render(); return; }
     const el = e.target;
     if (el.dataset && el.dataset.score) {
       // saisie directe du score : on met à jour le brouillon sans redessiner (garde le curseur)
@@ -475,6 +512,18 @@
       if (err) { toast(err === 'tie' ? t('eTie') : t('eRange')); return; }
       editing[id] = false;
       store.setResult(id, { a: m.a, b: m.b, sa, sb, by: myTeam, status: 'submitted', at: Date.now() }).then(() => toast(t('saved')));
+    },
+    live(el, id) {
+      const r = curRound(), m = r.matches.find(x => x.id === id), d = draft[id];
+      const mineA = m.a === myTeam, sa = mineA ? d.me : d.them, sb = mineA ? d.them : d.me;
+      if (!(sa >= 0 && sb >= 0 && sa <= 13 && sb <= 13)) { toast(t('eRange')); return; }
+      const at = Date.now(); d.src = at;
+      store.setResult(id, { a: m.a, b: m.b, sa, sb, by: myTeam, status: 'live', at }).then(() => toast(t('liveSaved')));
+    },
+    livesort(el) { liveSort = el.dataset.k; render(); },
+    adminquick(el, id) {
+      const r = results[id];
+      store.setResult(id, Object.assign({}, r, { status: 'validated', confirmedBy: 'admin', at: Date.now() })).then(() => toast(t('saved')));
     },
     confirm(el, id) { const r = results[id]; store.setResult(id, Object.assign({}, r, { status: 'validated', confirmedBy: myTeam, at: Date.now() })).then(() => toast(t('validated'))); },
     contest(el, id) { const r = results[id]; delete draft[id]; store.setResult(id, Object.assign({}, r, { status: 'disputed', disputedBy: myTeam, at: Date.now() })); },
