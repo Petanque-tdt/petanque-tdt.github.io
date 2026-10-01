@@ -207,7 +207,7 @@
     }
     return html + '</div>';
   }
-  const stepper = (id, k, label, v) => `<div class="stepper"><div class="lbl">${label}</div><div class="val">${v}</div><div class="ctl"><button type="button" aria-label="−1" data-act="step" data-id="${id}" data-k="${k}" data-d="-1">−</button><button type="button" aria-label="+1" data-act="step" data-id="${id}" data-k="${k}" data-d="1">+</button></div></div>`;
+  const stepper = (id, k, label, v) => `<div class="stepper"><label class="lbl" for="sc_${id}_${k}">${label}</label><input class="val" type="number" inputmode="numeric" pattern="[0-9]*" min="0" max="13" id="sc_${id}_${k}" data-score="${id}" data-k="${k}" data-keep="no" value="${v}" aria-label="${label}"><div class="ctl"><button type="button" aria-label="−1" data-act="step" data-id="${id}" data-k="${k}" data-d="-1">−</button><button type="button" aria-label="+1" data-act="step" data-id="${id}" data-k="${k}" data-d="1">+</button></div></div>`;
   function clockHtml(r) {
     if (!r.startedAt) return `<p class="muted small">${t('notStarted')}</p>`;
     return `<div class="row between"><span class="lbl">${t('remaining')}</span><span class="clock" data-clock="${r.startedAt}">--:--</span></div><p class="small muted" data-timeup hidden>${t('timeUp')}</p>`;
@@ -446,7 +446,18 @@
     const H = actions[a];
     if (H) { e.preventDefault(); H(el, id); }
   });
-  document.addEventListener('input', e => { if (e.target.id === 'q') { searchQ = e.target.value; render(); } });
+  document.addEventListener('input', e => {
+    if (e.target.id === 'q') { searchQ = e.target.value; render(); return; }
+    const el = e.target;
+    if (el.dataset && el.dataset.score) {
+      // saisie directe du score : on met à jour le brouillon sans redessiner (garde le curseur)
+      const d = draft[el.dataset.score]; if (!d) return;
+      const n = parseInt(el.value, 10);
+      d[el.dataset.k] = Number.isNaN(n) ? 0 : Math.min(13, Math.max(0, n));
+      if (el.value !== '' && String(d[el.dataset.k]) !== el.value) el.value = d[el.dataset.k];
+    }
+  });
+  document.addEventListener('focusin', e => { if (e.target.dataset && e.target.dataset.score) { try { e.target.select(); } catch (x) { } } });
   document.addEventListener('change', e => { const el = e.target; if (el.dataset && el.dataset.act === 'present') actions.present(el, el.dataset.id); });
   document.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.classList && e.target.classList.contains('pchip') && e.target.dataset.act === 'chip') { e.preventDefault(); actions.chip(e.target, e.target.dataset.id); } if (e.key === 'Enter' && e.target.id === 'pin') actions.login(); });
 
