@@ -277,16 +277,20 @@
     const R = ranked(), T = tById();
     return `<div class="card"><h2>${t('rank')}</h2><p class="muted small">${state.cfg.rankMode === 'elo' ? t('rankHelpElo') : t('rankHelp')}</p>
       <p class="hint">${t('tapHint')}</p>
+      <p class="small muted legend"><i class="dot w"></i> ${t('won')} <i class="dot l"></i> ${t('lost')} <i class="dot pend"></i> ${t('pending')}</p>
       <div class="tbl"><table><thead><tr><th>#</th><th>${t('team')}</th><th class="n">${t('w')}</th><th class="n">${t('l')}</th><th class="n">${t('elo')}</th><th class="n">${t('buch')}</th><th class="n">${t('diff')}</th><th aria-hidden="true"></th></tr></thead><tbody>
       ${R.map(s => `<tr class="click ${s.id === myTeam ? 'me' : ''}" data-act="sheet" data-id="${s.id}" tabindex="0" role="button" aria-label="${teamLabel(T[s.id])}"><td><span class="rk">${s.rank}</span></td><td><b>${String(s.num).padStart(2, '0')}</b> <span class="names">${teamNames(T[s.id], true)}</span>${pastLine(s)}</td><td class="n">${s.w}</td><td class="n">${s.l}</td><td class="n">${Math.round(s.elo)}</td><td class="n">${s.buch}</td><td class="n">${s.diff > 0 ? '+' : ''}${s.diff}</td><td class="go" aria-hidden="true">›</td></tr>`).join('')}
       </tbody></table></div></div>`;
   }
+  // une pastille par tour : verte = victoire, rouge = défaite, grise = en cours, contour = exempt
   function pastLine(s) {
     if (!s.hist.length) return '';
     const T = tById(), nn = id => String((T[id] || {}).num || '').padStart(2, '0');
-    return `<div class="past">${s.hist.map(h => h.bye ? `<span class="chip soft">T${h.round} BYE</span>`
-      : h.pending ? `<span class="chip soft">T${h.round} … vs ${nn(h.opp)}</span>`
-      : `<span class="chip ${h.win ? 'ok' : 'bad'}">T${h.round} ${h.me}:${h.them} vs ${nn(h.opp)}</span>`).join(' ')}</div>`;
+    return `<span class="dots">${s.hist.map(h => {
+      const cls = h.bye ? 'bye' : h.pending ? 'pend' : h.win ? 'w' : 'l';
+      const tip = h.bye ? `T${h.round} BYE` : h.pending ? `T${h.round} vs ${nn(h.opp)}` : `T${h.round} ${h.me}:${h.them} vs ${nn(h.opp)}`;
+      return `<i class="dot ${cls}" title="${tip}"></i>`;
+    }).join('')}</span>`;
   }
   function renderSheet() {
     const el = $('#sheet');
