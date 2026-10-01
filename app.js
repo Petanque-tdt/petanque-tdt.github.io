@@ -1,0 +1,557 @@
+/* Pétanque 2026 — interface (joueurs, classement, organisateur) */
+(function () {
+  'use strict';
+  const CFG = window.APP_CONFIG || {};
+  const $ = s => document.querySelector(s);
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const ls = {
+    get(k) { try { return localStorage.getItem('pet26.' + k); } catch (e) { return null; } },
+    set(k, v) { try { v == null ? localStorage.removeItem('pet26.' + k) : localStorage.setItem('pet26.' + k, v); } catch (e) { } }
+  };
+  document.documentElement.dataset.skin = CFG.skin || 'C';
+
+  // ---------------- textes FR / EN ----------------
+  const I = {
+    fr: {
+      tabMe: 'Mon match', tabRound: 'Tours', tabRank: 'Classement', tabRules: 'Règles', admin: 'Organisateur',
+      pickTeam: 'Quelle est ton équipe ?', pickHelp: 'Cherche ton nom. L’app s’en souviendra sur ce téléphone.',
+      search: 'Nom ou prénom', team: 'Équipe', change: 'Changer d’équipe', noTeams: 'Les équipes ne sont pas encore formées. Reviens un peu avant 17h15.',
+      round: 'Tour', of: 'sur', terrain: 'Terrain', vs: 'contre', waitRound: 'En attente du prochain tour', nextAt: 'Prochain tour prévu à',
+      bye: 'Exempt ce tour : victoire 13-7 comptée automatiquement.', remaining: 'Temps restant', timeUp: 'Temps écoulé : finissez la mène en cours. En cas d’égalité, une mène décisive.',
+      notStarted: 'Le chrono n’a pas encore démarré.', enterScore: 'Saisir le score', us: 'Nous', them: 'Eux', send: 'Envoyer le score',
+      waitConfirm: 'Score envoyé. En attente de confirmation par l’adversaire.', edit: 'Modifier', oppEntered: 'L’adversaire a saisi',
+      confirm: 'Confirmer', contest: 'Contester', disputed: 'Score contesté : mettez-vous d’accord ou allez voir l’organisateur.',
+      validated: 'Score validé', won: 'Victoire', lost: 'Défaite', history: 'Mes matchs', pending: 'en cours',
+      eTie: 'Pas d’égalité possible : jouez une mène décisive.', eRange: 'Score entre 0 et 13.',
+      rank: 'Classement', w: 'V', l: 'D', elo: 'Pts', buch: 'Bh', diff: '+/−', rankHelp: 'Victoires, puis points Elo (battre une équipe forte rapporte plus), puis Buchholz (Bh, force des adversaires), puis différence de points.',
+      rankHelpElo: 'Classement aux points Elo, puis victoires, puis différence de points.',
+      roundN: 'Tour', allRounds: 'Tours', noRound: 'Aucun tour généré pour l’instant.', schedule: 'Planning',
+      stValidated: 'validé', stSubmitted: 'à confirmer', stDisputed: 'contesté', stNone: 'en jeu', stats: 'Statistiques', close: 'Fermer',
+      players: 'Joueurs', saved: 'Enregistré', demo: 'Mode démo : données enregistrées seulement sur cet appareil (Firebase non configuré).', offline: 'Connexion perdue, nouvelle tentative…',
+      pin: 'Code organisateur', enter: 'Entrer', badPin: 'Code incorrect', logout: 'Quitter le mode organisateur'
+    },
+    en: {
+      tabMe: 'My match', tabRound: 'Rounds', tabRank: 'Standings', tabRules: 'Rules', admin: 'Organiser',
+      pickTeam: 'Which team are you on?', pickHelp: 'Search your name. The app will remember it on this phone.',
+      search: 'First or last name', team: 'Team', change: 'Change team', noTeams: 'Teams have not been formed yet. Check back shortly before 5:15 pm.',
+      round: 'Round', of: 'of', terrain: 'Pitch', vs: 'vs', waitRound: 'Waiting for the next round', nextAt: 'Next round planned at',
+      bye: 'Bye this round: counted as a 13-7 win.', remaining: 'Time left', timeUp: 'Time is up: finish the current end. If tied, play one deciding end.',
+      notStarted: 'The clock has not started yet.', enterScore: 'Enter the score', us: 'Us', them: 'Them', send: 'Send score',
+      waitConfirm: 'Score sent. Waiting for the other team to confirm.', edit: 'Edit', oppEntered: 'The other team entered',
+      confirm: 'Confirm', contest: 'Dispute', disputed: 'Score disputed: agree on it or see the organiser.',
+      validated: 'Score confirmed', won: 'Win', lost: 'Loss', history: 'My matches', pending: 'in play',
+      eTie: 'No draws: play one deciding end.', eRange: 'Score must be between 0 and 13.',
+      rank: 'Standings', w: 'W', l: 'L', elo: 'Pts', buch: 'Bh', diff: '+/−', rankHelp: 'Wins, then Elo points (beating a strong team earns more), then Buchholz (Bh, strength of opponents), then point difference.',
+      rankHelpElo: 'Ranked by Elo points, then wins, then point difference.',
+      roundN: 'Round', allRounds: 'Rounds', noRound: 'No round generated yet.', schedule: 'Schedule',
+      stValidated: 'confirmed', stSubmitted: 'to confirm', stDisputed: 'disputed', stNone: 'in play', stats: 'Statistics', close: 'Close',
+      players: 'Players', saved: 'Saved', demo: 'Demo mode: data saved on this device only (Firebase not configured).', offline: 'Connection lost, retrying…',
+      pin: 'Organiser code', enter: 'Enter', badPin: 'Wrong code', logout: 'Leave organiser mode'
+    }
+  };
+  let lang = ls.get('lang') || ((navigator.language || 'fr').toLowerCase().startsWith('fr') ? 'fr' : 'en');
+  const t = k => (I[lang] && I[lang][k]) || I.fr[k] || k;
+
+  // ---------------- stockage ----------------
+  const DEFAULT_STATE = () => ({
+    players: [], pairs: [], teams: [], rounds: [], gen: 0, phase: 'setup',
+    terrains: Array.from({ length: 20 }, (_, i) => ({ n: i + 1, surface: '', active: true })),
+    cfg: { rounds: 5, matchMin: 20, pauseMin: 5, start: '17:15', rankMode: 'wins' }
+  });
+  const clean = o => JSON.parse(JSON.stringify(o));
+
+  function makeStore() {
+    if (CFG.firebase && CFG.firebase.apiKey && window.firebase) {
+      firebase.initializeApp(CFG.firebase);
+      const db = firebase.firestore();
+      const err = e => { console.error(e); showBanner(t('offline')); };
+      return {
+        kind: 'firebase',
+        onState: cb => db.doc('t/state').onSnapshot(s => { hideBanner(); cb(s.exists ? s.data() : null); }, err),
+        onResults: cb => db.collection('m').onSnapshot(q => { const o = {}; q.forEach(d => { o[d.id] = d.data(); }); cb(o); }, err),
+        setState: s => db.doc('t/state').set(clean(s)),
+        setResult: (id, r) => db.collection('m').doc(id).set(clean(r)),
+        clearResults: async () => { const q = await db.collection('m').get(); const b = db.batch(); q.forEach(d => b.delete(d.ref)); await b.commit(); }
+      };
+    }
+    // Mode démo : localStorage + synchronisation entre onglets
+    const subs = { s: [], r: [] };
+    const read = k => { try { return JSON.parse(localStorage.getItem('pet26.demo.' + k)); } catch (e) { return null; } };
+    const write = (k, v) => { try { localStorage.setItem('pet26.demo.' + k, JSON.stringify(v)); } catch (e) { } };
+    const fire = () => { subs.s.forEach(f => f(read('state'))); subs.r.forEach(f => f(read('results') || {})); };
+    window.addEventListener('storage', e => { if (e.key && e.key.startsWith('pet26.demo.')) fire(); });
+    return {
+      kind: 'demo',
+      onState: cb => { subs.s.push(cb); setTimeout(() => cb(read('state')), 0); },
+      onResults: cb => { subs.r.push(cb); setTimeout(() => cb(read('results') || {}), 0); },
+      setState: async s => { write('state', clean(s)); fire(); },
+      setResult: async (id, r) => { const o = read('results') || {}; o[id] = clean(r); write('results', o); fire(); },
+      clearResults: async () => { write('results', {}); fire(); }
+    };
+  }
+
+  // ---------------- état ----------------
+  let state = null, results = {}, loaded = { s: false, r: false };
+  let view = ls.get('view') || 'me';
+  let myTeam = ls.get('team');
+  let isAdmin = ls.get('admin') === '1';
+  let searchQ = '', draft = {}, editing = {}, selChip = null, armed = {}, sheetTeam = null, roundView = null, adminTab = ls.get('atab') || 'tour';
+  const store = makeStore();
+  if (store.kind === 'demo') showBanner(t('demo'));
+
+  store.onState(s => { state = Object.assign(DEFAULT_STATE(), s || {}); loaded.s = true; render(); });
+  store.onResults(r => { results = r || {}; loaded.r = true; render(); });
+
+  function save(mut) {
+    const s = clean(state); mut(s); s.updatedAt = Date.now();
+    state = s; render();
+    return store.setState(s).catch(e => { console.error(e); toast('Erreur : ' + e.message); });
+  }
+
+  // ---------------- dérivés ----------------
+  const pById = () => Object.fromEntries((state.players || []).map(p => [p.id, p]));
+  const tById = () => Object.fromEntries((state.teams || []).map(x => [x.id, x]));
+  const pName = (p, short) => p ? (short ? (p.first ? p.first.charAt(0) + '. ' : '') + p.last : p.first + ' ' + p.last) : '?';
+  function teamNames(team, short) { const P = pById(); return team ? team.p.map(id => esc(pName(P[id], short))).join(' · ') : ''; }
+  function teamCos(team) { const P = pById(); return team ? [...new Set(team.p.map(id => (P[id] || {}).co || ''))].join(' / ') : ''; }
+  const teamLabel = team => team ? t('team') + ' ' + String(team.num).padStart(2, '0') : '?';
+  const surfaceOf = n => ((state.terrains || []).find(x => x.n === n) || {}).surface || '';
+  function standings() { return PL.computeStandings(state, results); }
+  function ranked() { return PL.rank(standings(), state.cfg.rankMode); }
+  const curRound = () => state.rounds[state.rounds.length - 1] || null;
+  function resultFor(m) { const r = results[m.id]; return r && r.a === m.a && r.b === m.b ? r : null; }
+  function roundStatus(r) {
+    const ms = r.matches.map(m => resultFor(m));
+    return { total: ms.length, valid: ms.filter(x => x && x.status === 'validated').length, disputed: ms.filter(x => x && x.status === 'disputed').length };
+  }
+
+  // ---------------- rendu ----------------
+  function render() {
+    document.documentElement.lang = lang;
+    document.querySelectorAll('[data-lang]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.lang === lang)));
+    $('#sub').textContent = (CFG.subtitle || {})[lang] || '';
+    renderTabs();
+    if (!loaded.s) { $('#app').innerHTML = '<div class="card"><p class="muted">…</p></div>'; return; }
+    // préserve les champs de saisie entre deux rendus
+    const keep = {}; document.querySelectorAll('#app [id]').forEach(el => { if ('value' in el && el.type !== 'button') keep[el.id] = el.type === 'checkbox' ? el.checked : el.value; });
+    const focus = document.activeElement && document.activeElement.id;
+    const html = view === 'round' ? vRound() : view === 'rank' ? vRank() : view === 'rules' ? vRules() : view === 'admin' ? vAdmin() : vMe();
+    $('#app').innerHTML = html;
+    Object.entries(keep).forEach(([id, v]) => { const el = document.getElementById(id); if (el && el.dataset.keep !== 'no') { if (el.type === 'checkbox') el.checked = v; else el.value = v; } });
+    if (focus) { const el = document.getElementById(focus); if (el) { el.focus(); if (el.setSelectionRange && el.type === 'search') { const n = el.value.length; el.setSelectionRange(n, n); } } }
+    renderSheet(); tick();
+  }
+  function renderTabs() {
+    const tabs = [['me', t('tabMe')], ['round', t('tabRound')], ['rank', t('tabRank')], ['rules', t('tabRules')]];
+    $('#tabs').innerHTML = tabs.map(([k, l]) => `<button type="button" data-act="view" data-v="${k}" ${view === k || (view === 'admin' && k === 'rules') ? 'aria-current="page"' : ''}>${l}</button>`).join('');
+  }
+
+  // ----- Mon match -----
+  function vMe() {
+    const T = tById();
+    if (!state.teams.length) return `<div class="card"><h2>${t('tabMe')}</h2><p>${t('noTeams')}</p></div>`;
+    if (!myTeam || !T[myTeam]) return vPicker();
+    const team = T[myTeam], S = standings(), s = S[myTeam];
+    const R = ranked(), me = R.find(x => x.id === myTeam);
+    let out = `<div class="card"><div class="row between"><div><div class="lbl">${t('team')}</div><h2>${teamLabel(team)}</h2></div>
+      <div class="row"><span class="chip soft">${me.rank}ᵉ / ${R.length}</span><span class="chip soft">${s.w} ${t('w')} · ${s.l} ${t('l')}</span></div></div>
+      <div class="names">${teamNames(team)}<br>${esc(teamCos(team))}</div></div>`;
+    const r = curRound();
+    if (!r) {
+      out += `<div class="card"><p>${t('waitRound')}.</p>${scheduleLine(1)}</div>`;
+    } else if (r.bye === myTeam) {
+      out += `<div class="card"><div class="lbl">${t('round')} ${r.n} ${t('of')} ${state.cfg.rounds}</div><p>${t('bye')}</p>${scheduleLine(r.n + 1)}</div>`;
+    } else {
+      const m = r.matches.find(x => x.a === myTeam || x.b === myTeam);
+      out += m ? matchCard(r, m) : `<div class="card"><p>${t('waitRound')}.</p></div>`;
+    }
+    out += historyCard(s);
+    out += `<button type="button" class="btn ghost full" data-act="unpick">${t('change')}</button>`;
+    return out;
+  }
+  function scheduleLine(n) {
+    if (n > state.cfg.rounds) return '';
+    const sc = PL.schedule(state.cfg, n)[n - 1];
+    return `<p class="muted small">${t('nextAt')} ${sc.start}</p>`;
+  }
+  function vPicker() {
+    const P = pById(), q = searchQ.trim().toLowerCase();
+    const teams = state.teams.filter(x => !q || x.p.some(id => pName(P[id]).toLowerCase().includes(q)) || String(x.num) === q);
+    return `<div class="card"><h2>${t('pickTeam')}</h2><p class="muted small">${t('pickHelp')}</p>
+      <input type="search" id="q" data-act="search" placeholder="${t('search')}" autocomplete="off" value="${esc(searchQ)}" data-keep="no">
+      <div>${teams.slice(0, 40).map(x => `<button type="button" class="pick" data-act="pick" data-id="${x.id}"><span><b>${teamLabel(x)}</b><br><span class="names">${teamNames(x)}</span></span><span class="chip soft">${esc(teamCos(x))}</span></button>`).join('')}</div></div>`;
+  }
+  function matchCard(r, m) {
+    const T = tById(), mineA = m.a === myTeam, opp = T[mineA ? m.b : m.a];
+    const res = resultFor(m);
+    const surf = surfaceOf(m.terrain);
+    let html = `<div class="card"><div class="row between"><span class="lbl">${t('round')} ${r.n} ${t('of')} ${state.cfg.rounds}</span>${surf ? `<span class="chip">${esc(surf)}</span>` : ''}</div>
+      <div class="big">${t('terrain')} ${m.terrain}</div>
+      <div><span class="muted small">${t('vs')}</span> <b>${teamLabel(opp)}</b><div class="names">${teamNames(opp)} · ${esc(teamCos(opp))}</div></div>
+      ${clockHtml(r)}`;
+    const mine = res ? (mineA ? res.sa : res.sb) : null, theirs = res ? (mineA ? res.sb : res.sa) : null;
+    if (res && res.status === 'validated') {
+      html += `<div class="row between"><span class="chip ${mine > theirs ? 'ok' : 'bad'}">${mine > theirs ? t('won') : t('lost')}</span><span class="big">${mine} : ${theirs}</span></div><p class="muted small">${t('validated')}.</p>${scheduleLine(r.n + 1)}`;
+    } else if (res && res.status === 'submitted' && res.by !== myTeam && !editing[m.id]) {
+      html += `<p>${t('oppEntered')} :</p><div class="score"><div><div class="lbl">${t('us')}</div><div class="big">${mine}</div></div><div>:</div><div><div class="lbl">${t('them')}</div><div class="big">${theirs}</div></div></div>
+        <div class="grid2"><button type="button" class="btn" data-act="confirm" data-id="${m.id}">${t('confirm')}</button><button type="button" class="btn danger" data-act="contest" data-id="${m.id}">${t('contest')}</button></div>`;
+    } else if (res && res.status === 'submitted' && res.by === myTeam && !editing[m.id]) {
+      html += `<div class="score"><div><div class="lbl">${t('us')}</div><div class="big">${mine}</div></div><div>:</div><div><div class="lbl">${t('them')}</div><div class="big">${theirs}</div></div></div>
+        <p class="muted small">${t('waitConfirm')}</p><button type="button" class="btn ghost" data-act="editscore" data-id="${m.id}">${t('edit')}</button>`;
+    } else {
+      if (res && res.status === 'disputed') html += `<p class="chip bad">${t('disputed')}</p>`;
+      const d = draft[m.id] || (draft[m.id] = { me: mine != null ? mine : 0, them: theirs != null ? theirs : 0 });
+      html += `<div class="lbl">${t('enterScore')}</div><div class="score">
+        ${stepper(m.id, 'me', t('us'), d.me)}<div class="big">:</div>${stepper(m.id, 'them', t('them'), d.them)}</div>
+        <button type="button" class="btn full" data-act="send" data-id="${m.id}">${t('send')}</button>`;
+    }
+    return html + '</div>';
+  }
+  const stepper = (id, k, label, v) => `<div class="stepper"><div class="lbl">${label}</div><div class="val">${v}</div><div class="ctl"><button type="button" aria-label="−1" data-act="step" data-id="${id}" data-k="${k}" data-d="-1">−</button><button type="button" aria-label="+1" data-act="step" data-id="${id}" data-k="${k}" data-d="1">+</button></div></div>`;
+  function clockHtml(r) {
+    if (!r.startedAt) return `<p class="muted small">${t('notStarted')}</p>`;
+    return `<div class="row between"><span class="lbl">${t('remaining')}</span><span class="clock" data-clock="${r.startedAt}">--:--</span></div><p class="small muted" data-timeup hidden>${t('timeUp')}</p>`;
+  }
+  function historyCard(s) {
+    if (!s.hist.length) return '';
+    const T = tById();
+    return `<div class="card"><h3>${t('history')}</h3><div class="list">${s.hist.map(h => h.bye
+      ? `<div class="row between"><span>${t('round')} ${h.round}</span><span class="chip soft">BYE 13:7</span></div>`
+      : `<div class="row between"><span>${t('round')} ${h.round} · ${t('terrain')} ${h.terrain}<br><span class="names">${t('vs')} ${teamLabel(T[h.opp])}</span></span>${h.pending ? `<span class="chip soft">${t('pending')}</span>` : `<span><span class="chip ${h.win ? 'ok' : 'bad'}">${h.me}:${h.them}</span> <span class="small muted">${h.d >= 0 ? '+' : ''}${Math.round(h.d)}</span></span>`}</div>`).join('')}</div></div>`;
+  }
+
+  // ----- Tours -----
+  function vRound() {
+    const sc = PL.schedule(state.cfg, Math.max(state.cfg.rounds, state.rounds.length));
+    let html = `<div class="card"><h2>${t('schedule')}</h2><div class="row">${sc.map(x => {
+      const r = state.rounds.find(y => y.n === x.n);
+      const st = r ? roundStatus(r) : null;
+      return `<button type="button" class="pchip ${roundView === x.n || (roundView == null && curRound() && curRound().n === x.n) ? 'sel' : ''}" data-act="roundview" data-n="${x.n}" ${r ? '' : 'disabled'}>${t('round')} ${x.n} · ${x.start}${st ? ` · ${st.valid}/${st.total}` : ''}</button>`;
+    }).join('')}</div></div>`;
+    const n = roundView || (curRound() && curRound().n);
+    const r = state.rounds.find(y => y.n === n);
+    if (!r) return html + `<div class="card"><p>${t('noRound')}</p></div>`;
+    const T = tById();
+    html += `<div class="card"><div class="row between"><h2>${t('round')} ${r.n}</h2>${r === curRound() ? clockHtml(r).replace('<p class="small muted" data-timeup hidden>' + t('timeUp') + '</p>', '') : ''}</div><div class="list">` +
+      r.matches.map(m => {
+        const res = resultFor(m), st = res ? res.status : 'none';
+        const chip = st === 'validated' ? `<span class="chip ok">${res.sa}:${res.sb}</span>` : st === 'submitted' ? `<span class="chip warn">${res.sa}:${res.sb} ${t('stSubmitted')}</span>` : st === 'disputed' ? `<span class="chip bad">${t('stDisputed')}</span>` : `<span class="chip soft">${t('stNone')}</span>`;
+        const mine = m.a === myTeam || m.b === myTeam;
+        return `<div style="${mine ? 'background:var(--soft);padding-inline:8px;border-radius:8px' : ''}"><div class="row between"><b>${t('terrain')} ${m.terrain}${surfaceOf(m.terrain) ? ` <span class="muted small">· ${esc(surfaceOf(m.terrain))}</span>` : ''}</b>${chip}</div>
+          <div class="vs small"><div><b>${teamLabel(T[m.a])}</b><span class="names">${teamNames(T[m.a], true)}</span></div><div class="muted">${t('vs')}</div><div><b>${teamLabel(T[m.b])}</b><span class="names">${teamNames(T[m.b], true)}</span></div></div></div>`;
+      }).join('') + (r.bye ? `<div class="row between"><span>${teamLabel(T[r.bye])} <span class="names">${teamNames(T[r.bye], true)}</span></span><span class="chip soft">BYE</span></div>` : '') + '</div></div>';
+    return html;
+  }
+
+  // ----- Classement -----
+  function vRank() {
+    if (!state.teams.length) return `<div class="card"><p>${t('noTeams')}</p></div>`;
+    const R = ranked(), T = tById();
+    return `<div class="card"><h2>${t('rank')}</h2><p class="muted small">${state.cfg.rankMode === 'elo' ? t('rankHelpElo') : t('rankHelp')}</p>
+      <div class="tbl"><table><thead><tr><th>#</th><th>${t('team')}</th><th class="n">${t('w')}</th><th class="n">${t('l')}</th><th class="n">${t('elo')}</th><th class="n">${t('buch')}</th><th class="n">${t('diff')}</th></tr></thead><tbody>
+      ${R.map(s => `<tr class="click ${s.id === myTeam ? 'me' : ''}" data-act="sheet" data-id="${s.id}"><td><span class="rk">${s.rank}</span></td><td><b>${String(s.num).padStart(2, '0')}</b> <span class="names">${teamNames(T[s.id], true)}</span></td><td class="n">${s.w}</td><td class="n">${s.l}</td><td class="n">${Math.round(s.elo)}</td><td class="n">${s.buch}</td><td class="n">${s.diff > 0 ? '+' : ''}${s.diff}</td></tr>`).join('')}
+      </tbody></table></div></div>`;
+  }
+  function renderSheet() {
+    const el = $('#sheet');
+    if (!sheetTeam || !state || !tById()[sheetTeam]) { el.innerHTML = ''; return; }
+    const T = tById(), S = standings(), s = S[sheetTeam], R = ranked(), me = R.find(x => x.id === sheetTeam);
+    const avgOpp = s.opps.length ? Math.round(s.opps.reduce((a, o) => a + S[o].elo, 0) / s.opps.length) : '-';
+    el.innerHTML = `<div class="sheet" data-act="closesheet"><div class="card" role="dialog" aria-modal="true" data-stop="1">
+      <div class="row between"><h2>${teamLabel(T[sheetTeam])}</h2><button type="button" class="btn ghost sm" data-act="closesheet">${t('close')}</button></div>
+      <div class="names">${teamNames(T[sheetTeam])}<br>${esc(teamCos(T[sheetTeam]))}</div>
+      <div class="grid3">
+        <div class="card"><span class="lbl">#</span><span class="big">${me.rank}</span></div>
+        <div class="card"><span class="lbl">${t('w')}-${t('l')}</span><span class="big">${s.w}-${s.l}</span></div>
+        <div class="card"><span class="lbl">Elo</span><span class="big">${Math.round(s.elo)}</span></div>
+        <div class="card"><span class="lbl">${t('diff')}</span><span class="big">${s.diff > 0 ? '+' : ''}${s.diff}</span></div>
+        <div class="card"><span class="lbl">Buchholz</span><span class="big">${s.buch}</span></div>
+        <div class="card"><span class="lbl">Elo adv.</span><span class="big">${avgOpp}</span></div>
+      </div>${historyCard(s).replace(t('history'), t('stats'))}</div></div>`;
+  }
+
+  // ----- Règles -----
+  function vRules() {
+    const c = state.cfg;
+    const R = lang === 'fr' ? `
+      <h3>Notre tournoi</h3><ul>
+        <li>Doublettes : 3 boules par joueur. Une éventuelle triplette joue avec 2 boules par joueur (6 boules par équipe dans les deux cas).</li>
+        <li>${c.rounds} tours de ${c.matchMin} min, un nouveau tour toutes les ${c.matchMin + c.pauseMin} min dès ${c.start.replace(':', 'h')}.</li>
+        <li>Le match s’arrête dès qu’une équipe atteint <b>13 points</b>, même avant la fin du temps.</li>
+        <li>Au coup de sifflet (chrono à 0) : on <b>termine la mène en cours</b>, puis le match s’arrête. L’équipe qui mène gagne.</li>
+        <li>En cas d’<b>égalité</b> à ce moment-là : on joue <b>une mène décisive</b>. Il n’y a jamais de match nul.</li>
+        <li>Saisie : une équipe entre le score dans l’app, l’autre le confirme. En cas de désaccord, « Contester » et l’organisateur tranche.</li>
+        <li>Appariements : à chaque tour, vous affrontez une équipe avec le même nombre de victoires, jamais deux fois la même, en mélangeant les sociétés. Les terrains tournent.</li>
+        <li>Classement : victoires, puis points Elo (battre une équipe forte rapporte plus, avec un petit bonus selon l’écart), puis Buchholz (somme des victoires de vos adversaires), puis différence de points.</li>
+        <li>Une équipe exempte (nombre impair d’équipes) gagne 13-7.</li></ul>
+      <h3>Règles de base de la pétanque</h3><ul>
+        <li>Un tirage au sort désigne l’équipe qui commence. Elle trace un cercle de 35 à 50 cm et lance le cochonnet entre 6 et 10 m.</li>
+        <li>On joue les pieds dans le cercle, sans les décoller du sol, jusqu’à ce que la boule retombe.</li>
+        <li>La première équipe joue une boule. Ensuite, c’est toujours l’équipe qui <b>n’a pas le point</b> qui joue, jusqu’à reprendre le point ou épuiser ses boules.</li>
+        <li>Quand toutes les boules sont jouées, l’équipe gagnante marque 1 point par boule plus proche du cochonnet que la meilleure boule adverse.</li>
+        <li>L’équipe qui a gagné la mène trace le nouveau cercle à l’endroit du cochonnet et le relance.</li>
+        <li>On ne ramasse aucune boule avant la fin de la mène et la mesure.</li>
+        <li>Une boule qui sort du terrain est morte. Si le cochonnet sort : mène nulle si les deux équipes ont encore des boules ; sinon, l’équipe qui en a encore marque autant de points que de boules restantes.</li>
+        <li>Si les deux meilleures boules adverses sont à égale distance et qu’il n’y a plus de boules à jouer, la mène est nulle.</li>
+        <li>Fair-play : environ une minute par boule, on se tient à l’écart et en silence pendant que l’adversaire joue.</li></ul>` : `
+      <h3>Our tournament</h3><ul>
+        <li>Doubles: 3 boules per player. A possible team of three plays with 2 boules each (6 boules per team either way).</li>
+        <li>${c.rounds} rounds of ${c.matchMin} min, a new round every ${c.matchMin + c.pauseMin} min from ${c.start}.</li>
+        <li>A match ends as soon as a team reaches <b>13 points</b>, even before time is up.</li>
+        <li>At the whistle (clock at 0): <b>finish the current end</b>, then the match stops. The team ahead wins.</li>
+        <li>If the score is <b>tied</b> at that point, play <b>one deciding end</b>. There are no draws.</li>
+        <li>Scores: one team enters the score in the app, the other confirms it. If you disagree, tap "Dispute" and the organiser decides.</li>
+        <li>Pairings: each round you meet a team with the same number of wins, never the same team twice, mixing companies. Pitches rotate.</li>
+        <li>Standings: wins, then Elo points (beating a strong team earns more, with a small bonus for the margin), then Buchholz (your opponents’ total wins), then point difference.</li>
+        <li>A team with a bye (odd number of teams) wins 13-7.</li></ul>
+      <h3>Basic pétanque rules</h3><ul>
+        <li>A coin toss decides who starts. That team draws a circle of 35 to 50 cm and throws the jack 6 to 10 m away.</li>
+        <li>Throw with both feet inside the circle and on the ground until the boule lands.</li>
+        <li>The first team plays one boule. After that, the team <b>not holding the point</b> always plays, until it takes the point or runs out of boules.</li>
+        <li>When all boules are played, the winning team scores 1 point for each boule closer to the jack than the opponents’ best boule.</li>
+        <li>The team that won the end draws the new circle where the jack lies and throws it again.</li>
+        <li>Do not pick up any boule before the end is over and measured.</li>
+        <li>A boule leaving the pitch is dead. If the jack leaves the pitch: the end is void if both teams still have boules; otherwise the team with boules left scores one point per remaining boule.</li>
+        <li>If the two closest opposing boules are at equal distance and no boules remain, the end is void.</li>
+        <li>Fair play: about one minute per boule; stand aside and stay quiet while the other team plays.</li></ul>`;
+    return `<div class="card rules"><h2>${t('tabRules')}</h2>${R}</div>
+      <button type="button" class="btn ghost full" data-act="view" data-v="admin">${t('admin')}</button>`;
+  }
+
+  // ----- Organisateur -----
+  function vAdmin() {
+    if (!isAdmin) return `<div class="card"><h2>${t('admin')}</h2><label class="lbl" for="pin">${t('pin')}</label><input type="password" id="pin" inputmode="numeric" autocomplete="off"><button type="button" class="btn" data-act="login">${t('enter')}</button></div>`;
+    const tabs = [['tour', 'Tournoi'], ['teams', 'Équipes'], ['players', 'Joueurs'], ['pairs', 'Binômes'], ['terr', 'Terrains']];
+    let h = `<div class="card"><div class="row between"><h2>${t('admin')}</h2><button type="button" class="btn ghost sm" data-act="logout">${t('logout')}</button></div>
+      <div class="row">${tabs.map(([k, l]) => `<button type="button" class="pchip ${adminTab === k ? 'sel' : ''}" data-act="atab" data-k="${k}">${l}</button>`).join('')}</div></div>`;
+    h += adminTab === 'teams' ? aTeams() : adminTab === 'players' ? aPlayers() : adminTab === 'pairs' ? aPairs() : adminTab === 'terr' ? aTerr() : aTour();
+    return h;
+  }
+  const armBtn = (key, label, cls, extra) => `<button type="button" class="btn ${cls || ''}" data-act="arm" data-key="${key}" ${extra || ''}>${armed[key] ? 'Confirmer ?' : label}</button>`;
+
+  function aTour() {
+    const c = state.cfg, r = curRound(), st = r ? roundStatus(r) : null;
+    const sc = PL.schedule(c, Math.max(c.rounds, state.rounds.length + 1));
+    const nextN = state.rounds.length + 1;
+    const canNext = state.teams.length >= 2 && (!r || st.valid === st.total) && nextN <= c.rounds;
+    let h = `<div class="card"><h3>Paramètres</h3><div class="grid2">
+        <label>Tours<input type="number" id="c_rounds" min="1" max="12" value="${c.rounds}"></label>
+        <label>Début<input type="time" id="c_start" value="${esc(c.start)}"></label>
+        <label>Match (min)<input type="number" id="c_match" min="5" max="60" value="${c.matchMin}"></label>
+        <label>Pause (min)<input type="number" id="c_pause" min="0" max="30" value="${c.pauseMin}"></label></div>
+        <label>Classement<select id="c_rank"><option value="wins" ${c.rankMode !== 'elo' ? 'selected' : ''}>Victoires, puis Elo, Buchholz, diff.</option><option value="elo" ${c.rankMode === 'elo' ? 'selected' : ''}>Points Elo d'abord</option></select></label>
+        <button type="button" class="btn ghost" data-act="savecfg">Enregistrer les paramètres</button>
+        <p class="muted small">${sc.map(x => `T${x.n} ${x.start}–${x.end}`).join(' · ')}</p></div>`;
+    h += `<div class="card"><h3>Déroulement</h3>
+      <p class="small">${state.teams.length} équipes · ${state.rounds.length}/${c.rounds} tours générés${r ? ` · tour ${r.n} : ${st.valid}/${st.total} scores validés${st.disputed ? `, <b style="color:var(--bad)">${st.disputed} contesté(s)</b>` : ''}` : ''}</p>
+      <button type="button" class="btn" data-act="gen" ${canNext ? '' : 'disabled'}>Générer le tour ${nextN}</button>
+      ${!canNext && r && st.valid < st.total ? '<p class="muted small">Tous les scores du tour en cours doivent être validés (tu peux les saisir ci-dessous).</p>' : ''}
+      ${nextN > c.rounds ? `<button type="button" class="btn ghost" data-act="addround">Ajouter un tour (${c.rounds + 1})</button>` : ''}
+      ${r ? `<button type="button" class="btn ghost" data-act="startclock">${r.startedAt ? 'Redémarrer' : 'Démarrer'} le chrono du tour ${r.n}</button>
+      ${armBtn('undo', 'Annuler le tour ' + r.n, 'danger')}` : ''}</div>`;
+    if (r) {
+      const T = tById();
+      h += `<div class="card"><h3>Scores du tour ${r.n}</h3><div class="list">${r.matches.map(m => {
+        const res = resultFor(m), stt = res ? res.status : 'none';
+        return `<div><div class="row between"><b>${t('terrain')} ${m.terrain}</b>${stt === 'validated' ? '<span class="chip ok">validé</span>' : stt === 'disputed' ? '<span class="chip bad">contesté</span>' : stt === 'submitted' ? '<span class="chip warn">à confirmer</span>' : '<span class="chip soft">en jeu</span>'}</div>
+          <div class="grid2 small"><span>${teamLabel(T[m.a])} <span class="names">${teamNames(T[m.a], true)}</span></span><span>${teamLabel(T[m.b])} <span class="names">${teamNames(T[m.b], true)}</span></span>
+          <input type="number" min="0" max="13" id="sa_${m.id}" value="${res ? res.sa : ''}" inputmode="numeric"><input type="number" min="0" max="13" id="sb_${m.id}" value="${res ? res.sb : ''}" inputmode="numeric"></div>
+          <button type="button" class="btn sm ghost" data-act="adminscore" data-id="${m.id}">Valider ce score</button></div>`;
+      }).join('')}</div></div>`;
+    }
+    h += `<div class="card"><h3>Sauvegarde</h3><button type="button" class="btn ghost" data-act="export">Exporter les données (JSON)</button>
+      ${armBtn('reset', 'Tout effacer (tours et scores)', 'danger')}</div>`;
+    return h;
+  }
+
+  function aTeams() {
+    const P = pById(), inTeam = new Set(state.teams.flatMap(x => x.p));
+    const bench = state.players.filter(p => p.present !== false && !inTeam.has(p.id));
+    const absentIn = state.teams.flatMap(x => x.p).filter(id => P[id] && P[id].present === false);
+    const unpairedChosen = state.players.filter(p => p.mode === 'choisi' && p.present !== false && !state.pairs.some(x => x.a === p.id || x.b === p.id));
+    const present = state.players.filter(p => p.present !== false).length;
+    let h = `<div class="card"><h3>Tirage des équipes</h3>
+      <p class="small">${present} joueurs présents · ${state.pairs.length} binômes choisis${present % 2 ? ' · nombre impair : une triplette sera formée' : ''}.</p>
+      ${unpairedChosen.length ? `<p class="small">« Je choisis » sans binôme (iront au tirage) : ${unpairedChosen.map(p => esc(pName(p))).join(', ')}</p>` : ''}
+      ${state.rounds.length ? '<p class="small" style="color:var(--bad)">Le tournoi a commencé : refaire le tirage efface les tours et les scores.</p>' : ''}
+      ${armBtn('draw', state.teams.length ? 'Refaire le tirage' : 'Tirer les équipes', '')}
+      ${state.lastDraw ? `<p class="muted small">Dernier tirage : ${state.lastDraw.mixed}/${state.lastDraw.drawn} équipes tirées au sort sont inter-sociétés.</p>` : ''}</div>`;
+    if (absentIn.length) h += `<div class="card" style="border-color:var(--bad)"><p class="small"><b>Absents encore dans une équipe :</b> ${absentIn.map(id => esc(pName(P[id]))).join(', ')}. Remplace-les avec le banc ci-dessous.</p></div>`;
+    h += `<div class="card"><h3>Modifier les équipes</h3><p class="muted small">Touche un joueur, puis un autre pour les échanger. Touche un joueur du banc puis « + » sur une équipe pour l'ajouter (triplette). × renvoie un joueur sur le banc.</p>
+      <div class="lbl">Banc (${bench.length})</div><div class="row">${bench.map(p => chip(p, true)).join('') || '<span class="muted small">vide</span>'}</div>
+      <div class="list">${state.teams.map(x => `<div><div class="row between"><b>${teamLabel(x)}</b><span class="row">${x.chosen ? '<span class="chip soft">choisi</span>' : ''}<button type="button" class="btn sm ghost" data-act="addto" data-id="${x.id}" ${selChip && bench.some(p => p.id === selChip) ? '' : 'disabled'}>+</button>${armBtn('delteam_' + x.id, 'Suppr.', 'sm danger')}</span></div>
+        <div class="row">${x.p.map(id => chip(P[id], false, x.id)).join('')}</div></div>`).join('')}</div>
+      <button type="button" class="btn ghost" data-act="newteam" ${bench.length >= 2 ? '' : 'disabled'}>Créer une équipe avec 2 joueurs du banc</button></div>`;
+    return h;
+  }
+  function chip(p, onBench, teamId) {
+    if (!p) return '';
+    const abs = p.present === false;
+    return `<span class="pchip ${selChip === p.id ? 'sel' : ''}" data-act="chip" data-id="${p.id}" role="button" tabindex="0" style="${abs ? 'text-decoration:line-through;border-color:var(--bad)' : ''}">${esc(pName(p))} <span class="muted small">${esc(p.co)}</span>${!onBench ? `<button type="button" class="x" data-act="tobench" data-id="${p.id}" data-team="${teamId}" aria-label="Retirer">×</button>` : ''}</span>`;
+  }
+
+  function aPlayers() {
+    const cos = [...new Set(state.players.map(p => p.co))].sort();
+    const present = state.players.filter(p => p.present !== false).length;
+    return `<div class="card"><h3>Ajouter un joueur</h3><div class="grid2"><input type="text" id="np_first" placeholder="Prénom"><input type="text" id="np_last" placeholder="Nom"></div>
+      <input type="text" id="np_co" placeholder="Société" list="cos"><datalist id="cos">${cos.map(c => `<option value="${esc(c)}">`).join('')}</datalist>
+      <select id="np_mode"><option value="tirage">Tirage au sort</option><option value="choisi">Je choisis</option></select>
+      <button type="button" class="btn" data-act="addplayer">Ajouter</button></div>
+      <div class="card"><h3>Participants (${present} présents / ${state.players.length})</h3><div class="list">${state.players.map(p => `<div class="row between"><span><b>${esc(pName(p))}</b> <span class="muted small">${esc(p.co)} · ${p.mode === 'choisi' ? 'choisit' : 'tirage'}</span></span>
+        <span class="row"><label class="small row"><input type="checkbox" data-act="present" data-id="${p.id}" ${p.present !== false ? 'checked' : ''}> présent</label><button type="button" class="btn sm ghost" data-act="mode" data-id="${p.id}">⇄</button></span></div>`).join('')}</div></div>
+      <details class="card"><summary>Importer une liste</summary><p class="muted small">Une ligne par joueur : Prénom;Nom;Société;tirage|choisi</p><textarea id="imp"></textarea><button type="button" class="btn ghost" data-act="import">Importer</button></details>`;
+  }
+  function aPairs() {
+    const P = pById(), used = new Set(state.pairs.flatMap(x => [x.a, x.b]));
+    const opts = state.players.filter(p => !used.has(p.id) && p.present !== false).sort((x, y) => (x.mode === 'choisi' ? 0 : 1) - (y.mode === 'choisi' ? 0 : 1) || pName(x).localeCompare(pName(y)))
+      .map(p => `<option value="${p.id}">${esc(pName(p))} (${esc(p.co)}${p.mode === 'choisi' ? ', choisit' : ''})</option>`).join('');
+    return `<div class="card"><h3>Binômes choisis</h3><p class="muted small">Saisis ici les réponses reçues sur Teams. Les binômes sont gardés tels quels au tirage.</p>
+      <select id="pa">${opts}</select><select id="pb">${opts}</select><button type="button" class="btn" data-act="addpair">Ajouter le binôme</button>
+      <div class="list">${state.pairs.map((x, i) => `<div class="row between"><span>${esc(pName(P[x.a]))} + ${esc(pName(P[x.b]))}</span><button type="button" class="btn sm danger" data-act="delpair" data-i="${i}">Retirer</button></div>`).join('')}</div></div>`;
+  }
+  function aTerr() {
+    const surf = ['Gravier', 'Sable', 'Terre battue', 'Stabilisé', 'Gazon', 'Goudron'];
+    return `<div class="card"><h3>Terrains</h3><p class="muted small">Type de surface et terrains disponibles. Les équipes tournent pour éviter de rejouer sur le même terrain ou la même surface.</p>
+      <datalist id="surfs">${surf.map(s => `<option value="${s}">`).join('')}</datalist>
+      <div class="list">${state.terrains.map((x, i) => `<div class="row"><b style="width:3ch">${x.n}</b><input type="text" id="ts_${i}" list="surfs" value="${esc(x.surface)}" placeholder="Surface" style="flex:1;min-width:0"><label class="small row"><input type="checkbox" id="ta_${i}" ${x.active !== false ? 'checked' : ''}> actif</label></div>`).join('')}</div>
+      <div class="grid2"><button type="button" class="btn ghost" data-act="addterr">+ Terrain</button><button type="button" class="btn" data-act="saveterr">Enregistrer</button></div></div>`;
+  }
+
+  // ---------------- chrono ----------------
+  function tick() {
+    const c = state && state.cfg;
+    document.querySelectorAll('[data-clock]').forEach(el => {
+      const end = Number(el.dataset.clock) + c.matchMin * 60000, ms = end - Date.now();
+      const s = Math.max(0, Math.round(ms / 1000));
+      el.textContent = String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+      el.classList.toggle('over', ms <= 0);
+      const up = el.closest('.card') && el.closest('.card').querySelector('[data-timeup]');
+      if (up) up.hidden = ms > 0;
+    });
+  }
+  setInterval(tick, 1000);
+
+  // ---------------- actions ----------------
+  function toast(msg) { const el = $('#toast'); el.textContent = msg; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => { el.hidden = true; }, 2600); }
+  function showBanner(msg) { const b = $('#banner'); b.textContent = msg; b.hidden = false; }
+  function hideBanner() { if (store && store.kind === 'demo') return; $('#banner').hidden = true; }
+  const nextPid = () => 'P' + String(Math.max(0, ...state.players.map(p => parseInt(String(p.id).slice(1), 10) || 0)) + 1).padStart(2, '0');
+
+  document.addEventListener('click', e => {
+    if (e.target.closest('[data-lang]')) { lang = e.target.closest('[data-lang]').dataset.lang; ls.set('lang', lang); render(); return; }
+    const el = e.target.closest('[data-act]');
+    if (!el) return;
+    if (el.dataset.act === 'closesheet' && e.target.closest('[data-stop]') && !e.target.closest('button[data-act="closesheet"]')) return;
+    const a = el.dataset.act, id = el.dataset.id;
+    const H = actions[a];
+    if (H) { e.preventDefault(); H(el, id); }
+  });
+  document.addEventListener('input', e => { if (e.target.id === 'q') { searchQ = e.target.value; render(); } });
+  document.addEventListener('change', e => { const el = e.target; if (el.dataset && el.dataset.act === 'present') actions.present(el, el.dataset.id); });
+  document.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.classList && e.target.classList.contains('pchip') && e.target.dataset.act === 'chip') { e.preventDefault(); actions.chip(e.target, e.target.dataset.id); } if (e.key === 'Enter' && e.target.id === 'pin') actions.login(); });
+
+  const val = id => (document.getElementById(id) || {}).value;
+  const actions = {
+    view(el) { view = el.dataset.v; ls.set('view', view === 'admin' ? 'rules' : view); window.scrollTo(0, 0); render(); },
+    pick(el, id) { myTeam = id; ls.set('team', id); searchQ = ''; render(); },
+    unpick() { myTeam = null; ls.set('team', null); render(); },
+    step(el, id) { const d = draft[id]; d[el.dataset.k] = Math.min(13, Math.max(0, d[el.dataset.k] + Number(el.dataset.d))); render(); },
+    editscore(el, id) { editing[id] = true; render(); },
+    send(el, id) {
+      const r = curRound(), m = r.matches.find(x => x.id === id), d = draft[id];
+      const mineA = m.a === myTeam, sa = mineA ? d.me : d.them, sb = mineA ? d.them : d.me;
+      const err = PL.validateScore(sa, sb);
+      if (err) { toast(err === 'tie' ? t('eTie') : t('eRange')); return; }
+      editing[id] = false;
+      store.setResult(id, { a: m.a, b: m.b, sa, sb, by: myTeam, status: 'submitted', at: Date.now() }).then(() => toast(t('saved')));
+    },
+    confirm(el, id) { const r = results[id]; store.setResult(id, Object.assign({}, r, { status: 'validated', confirmedBy: myTeam, at: Date.now() })).then(() => toast(t('validated'))); },
+    contest(el, id) { const r = results[id]; delete draft[id]; store.setResult(id, Object.assign({}, r, { status: 'disputed', disputedBy: myTeam, at: Date.now() })); },
+    roundview(el) { roundView = Number(el.dataset.n); render(); },
+    sheet(el, id) { sheetTeam = id; renderSheet(); },
+    closesheet() { sheetTeam = null; renderSheet(); },
+    login() { if (val('pin') === String(CFG.adminPin || '')) { isAdmin = true; ls.set('admin', '1'); render(); } else toast(t('badPin')); },
+    logout() { isAdmin = false; ls.set('admin', null); view = 'rules'; render(); },
+    atab(el) { adminTab = el.dataset.k; ls.set('atab', adminTab); selChip = null; render(); },
+    arm(el) {
+      const k = el.dataset.key;
+      if (!armed[k]) { armed[k] = true; render(); setTimeout(() => { if (armed[k]) { delete armed[k]; render(); } }, 4000); return; }
+      delete armed[k];
+      if (k === 'draw') return doDraw();
+      if (k === 'undo') return save(s => { s.rounds.pop(); s.phase = s.rounds.length ? 'running' : 'setup'; });
+      if (k === 'reset') return save(s => { s.rounds = []; s.phase = 'setup'; }).then(() => store.clearResults());
+      if (k.startsWith('delteam_')) { const tid = k.slice(8); return save(s => { s.teams = s.teams.filter(x => x.id !== tid); }); }
+    },
+    savecfg() {
+      const c = { rounds: +val('c_rounds') || 5, start: val('c_start') || '17:15', matchMin: +val('c_match') || 20, pauseMin: +val('c_pause') || 0, rankMode: val('c_rank') };
+      save(s => { s.cfg = c; }).then(() => toast(t('saved')));
+    },
+    addround() { save(s => { s.cfg.rounds += 1; }); },
+    gen() {
+      try {
+        const seed = Date.now();
+        const pr = PL.pairRound(state, results, seed);
+        const ms = PL.assignTerrains(pr.pairs, state, results, seed);
+        save(s => {
+          s.gen = (s.gen || 0) + 1; const n = s.rounds.length + 1;
+          s.rounds.push({ n, gen: s.gen, bye: pr.bye || null, startedAt: null, matches: ms.map(m => ({ id: `r${n}g${s.gen}t${m.terrain}`, a: m.a, b: m.b, terrain: m.terrain })) });
+          s.phase = 'running';
+        }).then(() => toast(`Tour généré${pr.rematches ? ' (attention : ' + pr.rematches + ' revanche(s) inévitable(s))' : ''}`));
+      } catch (e) { toast(e.message === 'terrains' ? 'Pas assez de terrains actifs' : 'Erreur : ' + e.message); }
+    },
+    startclock() { save(s => { s.rounds[s.rounds.length - 1].startedAt = Date.now(); }); },
+    adminscore(el, id) {
+      const r = curRound(), m = r.matches.find(x => x.id === id);
+      const sa = parseInt(val('sa_' + id), 10), sb = parseInt(val('sb_' + id), 10);
+      const err = PL.validateScore(sa, sb);
+      if (err) { toast(err === 'tie' ? t('eTie') : t('eRange')); return; }
+      store.setResult(id, { a: m.a, b: m.b, sa, sb, by: 'admin', status: 'validated', at: Date.now() }).then(() => toast(t('saved')));
+    },
+    export() {
+      const blob = new Blob([JSON.stringify({ state, results }, null, 1)], { type: 'application/json' });
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'petanque-2026-' + new Date().toISOString().slice(0, 16).replace(':', 'h') + '.json'; a.click();
+    },
+    chip(el, id) {
+      if (!selChip) { selChip = id; render(); return; }
+      if (selChip === id) { selChip = null; render(); return; }
+      const a = selChip, b = id; selChip = null;
+      save(s => {
+        const ta = s.teams.find(x => x.p.includes(a)), tb = s.teams.find(x => x.p.includes(b));
+        if (ta) ta.p = ta.p.map(x => x === a ? b : x === b ? a : x);
+        if (tb && tb !== ta) tb.p = tb.p.map(x => x === b ? a : x);
+        if (ta && tb && ta !== tb) { ta.chosen = false; tb.chosen = false; }
+      });
+    },
+    tobench(el, id) { const tid = el.dataset.team; save(s => { const x = s.teams.find(y => y.id === tid); if (x) x.p = x.p.filter(p => p !== id); }); },
+    addto(el, tid) { const pid = selChip; selChip = null; save(s => { const x = s.teams.find(y => y.id === tid); if (x && !x.p.includes(pid)) x.p.push(pid); }); },
+    newteam() {
+      const inTeam = new Set(state.teams.flatMap(x => x.p));
+      const bench = state.players.filter(p => p.present !== false && !inTeam.has(p.id)).slice(0, 2);
+      save(s => { const num = Math.max(0, ...s.teams.map(x => x.num)) + 1; s.teams.push({ id: 'T' + String(num).padStart(2, '0'), num, p: bench.map(p => p.id), chosen: false }); });
+    },
+    addplayer() {
+      const first = (val('np_first') || '').trim(), last = (val('np_last') || '').trim();
+      if (!first && !last) return;
+      save(s => { s.players.push({ id: nextPid(), first, last, co: (val('np_co') || '').trim() || '?', mode: val('np_mode') || 'tirage', present: true }); })
+        .then(() => { ['np_first', 'np_last'].forEach(i => { const el = document.getElementById(i); if (el) el.value = ''; }); toast(t('saved')); });
+    },
+    present(el, id) { const v = el.checked; save(s => { const p = s.players.find(x => x.id === id); if (p) p.present = v; }); },
+    mode(el, id) { save(s => { const p = s.players.find(x => x.id === id); if (p) p.mode = p.mode === 'choisi' ? 'tirage' : 'choisi'; }); },
+    import() {
+      const lines = (val('imp') || '').split(/\r?\n/).map(l => l.split(/[;\t,]/).map(x => x.trim())).filter(x => x.length >= 2 && (x[0] || x[1]));
+      save(s => { lines.forEach(([first, last, co, mode]) => { const n = Math.max(0, ...s.players.map(p => parseInt(String(p.id).slice(1), 10) || 0)) + 1; s.players.push({ id: 'P' + String(n).padStart(2, '0'), first, last, co: co || '?', mode: /chois/i.test(mode || '') ? 'choisi' : 'tirage', present: true }); }); })
+        .then(() => toast(lines.length + ' joueurs importés'));
+    },
+    addpair() { const a = val('pa'), b = val('pb'); if (!a || !b || a === b) { toast('Choisis deux joueurs différents'); return; } save(s => { s.pairs.push({ a, b }); }); },
+    delpair(el) { const i = Number(el.dataset.i); save(s => { s.pairs.splice(i, 1); }); },
+    addterr() { save(s => { s.terrains.push({ n: Math.max(0, ...s.terrains.map(x => x.n)) + 1, surface: '', active: true }); }); },
+    saveterr() { save(s => { s.terrains.forEach((x, i) => { x.surface = (val('ts_' + i) || '').trim(); const c = document.getElementById('ta_' + i); x.active = c ? c.checked : true; }); }).then(() => toast(t('saved'))); }
+  };
+
+  function doDraw() {
+    const d = PL.drawTeams(state.players, state.pairs, Date.now());
+    const hadRounds = state.rounds.length > 0;
+    save(s => { s.teams = d.teams; s.rounds = []; s.phase = 'setup'; s.lastDraw = d.stats; })
+      .then(() => { if (hadRounds) store.clearResults(); toast(`${d.teams.length} équipes · ${d.stats.mixed}/${d.stats.drawn} inter-sociétés`); });
+  }
+})();
