@@ -348,7 +348,7 @@
     const all = companyStandings();
     if (!all.length) return '';
     // petites délégations (moins de 3 joueurs) affichées à part, hors classement : leur % varie trop
-    const MIN = 3, L = all.filter(c => c.n >= MIN).concat(all.filter(c => c.n < MIN));
+    const MIN = 1, L = all.filter(c => c.n >= MIN).concat(all.filter(c => c.n < MIN));
     let rk = 0;
     return `<section class="scr-cos ${big ? 'big' : ''}"><h2>Classement des sociétés <small>% victoires/joueur · retraités inclus${all.some(c => c.n < MIN) ? ` · HC = moins de ${MIN} joueurs` : ''}</small></h2>
       <div class="scr-cos-row">${L.map(c => `<div class="co ${c.n < MIN ? 'hc' : ''}"><span class="co-rk">${c.n < MIN ? 'HC' : ++rk}</span><span class="co-pct">${Math.round(c.pct * 100)}%</span><b>${esc(c.name)}</b>
