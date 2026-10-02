@@ -208,7 +208,7 @@
           <div class="scr-miss ${miss.length > 45 ? 'dense' : ''}">${miss.map(p => `<span>${esc(p.first)} <b>${esc(p.last)}</b> <small>${esc(p.co)}</small></span>`).join('')}</div></section></div>`;
     }
     const R = ranked();
-    const rankBox = (n, title) => `<section class="scr-rank"><h2>${title}</h2><table>${R.slice(0, n).map(x => `<tr><td><span class="rk">${x.rank}</span></td><td><b>${String(x.num).padStart(2, '0')}</b> ${sn(x.id)}${pastLine(x)}</td><td class="n">${x.w}-${x.l}</td><td class="n muted">${Math.round(x.elo)}</td></tr>`).join('')}</table></section>`;
+    const rankBox = (n, title) => `<section class="scr-rank"><h2>${title}</h2><table>${R.slice(0, n).map(x => `<tr><td class="c-rk">${x.rank}</td><td class="c-tm"><b>${String(x.num).padStart(2, '0')}</b> ${sn(x.id)}</td><td class="c-dots">${pastLine(x)}</td><td class="n c-wl">${x.w}-${x.l}</td><td class="n muted">${Math.round(x.elo)}</td></tr>`).join('')}</table></section>`;
     // 2) Équipes tirées, tournoi pas commencé
     if (!state.rounds.length) {
       return `<div class="scr scr-teams"><header class="scr-head"><h1>Les équipes</h1><p>Trouve ton équipe dans l'app · <i>Find your team in the app</i> · début ${esc(state.cfg.start.replace(':', 'h'))}</p></header>
@@ -220,7 +220,7 @@
     if (done) {
       return `<div class="scr scr-final"><header class="scr-head"><h1>Classement final</h1><p>Bravo à tous ! · <i>Well played everyone!</i></p></header>
         <div class="scr-podium">${R.slice(0, 3).map((x, i) => `<div class="pod p${i + 1}"><span class="pod-n">${i + 1}</span><b>Équipe ${String(x.num).padStart(2, '0')}</b><span>${teamNames(T[x.id])}</span><small>${x.w} victoires · ${Math.round(x.elo)} pts</small></div>`).join('')}</div>
-        ${rankBox(16, 'Classement')}</div>`;
+        ${rankBox(20, 'Classement')}</div>`;
     }
     const sc = PL.schedule(state.cfg, Math.max(state.cfg.rounds, r.n + 1))[r.n];
     const ms = r.matches.slice().sort((a, b) => a.terrain - b.terrain);
@@ -230,7 +230,7 @@
       <div class="scr-body"><section class="scr-matches">${ms.map(m => { const res = resultFor(m); return `<div class="scr-m ${res && res.status === 'validated' ? 'fin' : ''}"><div class="scr-t">T${m.terrain}${surfaceOf(m.terrain) ? ` <small>${esc(surfaceOf(m.terrain))}</small>` : ''}</div>
           <div class="scr-a"><b>${String(T[m.a].num).padStart(2, '0')}</b> ${sn(m.a)}</div>${score(res)}<div class="scr-b"><b>${String(T[m.b].num).padStart(2, '0')}</b> ${sn(m.b)}</div></div>`; }).join('')}
           ${r.bye ? `<div class="scr-m"><div class="scr-t">BYE</div><div class="scr-a">${sn(r.bye)}</div></div>` : ''}</section>
-        ${rankBox(14, 'Classement')}</div></div>`;
+        ${rankBox(20, 'Classement')}</div></div>`;
   }
 
   // ----- Pointage « Je suis là » (avant le tirage) -----
