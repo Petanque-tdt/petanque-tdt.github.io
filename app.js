@@ -119,6 +119,9 @@
   }
 
   // ---------------- dérivés ----------------
+  // inscrit = sur la liste (non exclu) ; arrivé = inscrit ET pointé « Je suis là »
+  const inscrit = p => !!p && p.present !== false;
+  const here = p => inscrit(p) && !!checkins[p.id];
   const pById = () => Object.fromEntries((state.players || []).map(p => [p.id, p]));
   const tById = () => Object.fromEntries((state.teams || []).map(x => [x.id, x]));
   const pName = (p, short) => p ? (short ? (p.first ? p.first.charAt(0) + '. ' : '') + p.last : p.first + ' ' + p.last) : '?';
@@ -436,13 +439,16 @@
 
   function aTeams() {
     const P = pById(), inTeam = new Set(state.teams.flatMap(x => x.p));
-    const bench = state.players.filter(p => p.present !== false && !inTeam.has(p.id));
-    const absentIn = state.teams.flatMap(x => x.p).filter(id => P[id] && P[id].present === false);
-    const unpairedChosen = state.players.filter(p => p.mode === 'choisi' && p.present !== false && !state.pairs.some(x => x.a === p.id || x.b === p.id));
-    const present = state.players.filter(p => p.present !== false).length;
+    const bench = state.players.filter(p => here(p) && !inTeam.has(p.id));
+    const absentIn = state.teams.flatMap(x => x.p).filter(id => P[id] && !here(P[id]));
+    const unpairedChosen = state.players.filter(p => p.mode === 'choisi' && here(p) && !state.pairs.some(x => x.a === p.id || x.b === p.id));
+    const present = state.players.filter(here).length;
+    const miss = state.players.filter(p => inscrit(p) && !here(p));
+    const brokenPairs = state.pairs.filter(x => P[x.a] && P[x.b] && (here(P[x.a]) !== here(P[x.b])));
     let h = `<div class="card"><h3>Tirage des équipes</h3>
-      <p class="small">${present} joueurs présents · ${state.pairs.length} binômes choisis${present % 2 ? ' · nombre impair : une triplette sera formée' : ''}.</p>
-      ${(() => { const miss = state.players.filter(p => p.present !== false && !checkins[p.id]); return miss.length && miss.length < state.players.length ? `<p class="small" style="color:var(--warn)"><b>${miss.length} présents n'ont pas pointé :</b> ${miss.map(p => esc(pName(p))).join(', ')}</p>` : ''; })()}
+      <p class="small"><b>${present} joueurs arrivés</b> (seuls eux sont tirés au sort) · ${state.pairs.length} binômes choisis${present % 2 ? ' · nombre impair : une triplette sera formée' : ''}.</p>
+      ${miss.length ? `<p class="small" style="color:var(--warn)"><b>Encore attendus (${miss.length}) :</b> ${miss.map(p => esc(pName(p))).join(', ')}</p>` : ''}
+      ${brokenPairs.length ? `<p class="small" style="color:var(--bad)"><b>Binôme incomplet :</b> ${brokenPairs.map(x => `${esc(pName(P[x.a]))} + ${esc(pName(P[x.b]))}`).join(' ; ')}. Le joueur arrivé ira au tirage si son partenaire n'est pas là.</p>` : ''}
       ${unpairedChosen.length ? `<p class="small">« Je choisis » sans binôme (iront au tirage) : ${unpairedChosen.map(p => esc(pName(p))).join(', ')}</p>` : ''}
       ${state.rounds.length ? '<p class="small" style="color:var(--bad)">Le tournoi a commencé : refaire le tirage efface les tours et les scores.</p>' : ''}
       ${armBtn('draw', state.teams.length ? 'Refaire le tirage' : 'Tirer les équipes', '')}
@@ -457,34 +463,34 @@
   }
   function chip(p, onBench, teamId) {
     if (!p) return '';
-    const abs = p.present === false;
+    const abs = !here(p);
     return `<span class="pchip ${selChip === p.id ? 'sel' : ''}" data-act="chip" data-id="${p.id}" role="button" tabindex="0" style="${abs ? 'text-decoration:line-through;border-color:var(--bad)' : ''}">${esc(pName(p))} <span class="muted small">${esc(p.co)}</span>${!onBench ? `<button type="button" class="x" data-act="tobench" data-id="${p.id}" data-team="${teamId}" aria-label="Retirer">×</button>` : ''}</span>`;
   }
 
   function ciBox() {
-    const P = state.players.filter(p => p.present !== false);
-    const ok = P.filter(p => checkins[p.id]).length;
-    return `<div class="row between"><b>${ok} / ${P.length} ont pointé « Je suis là »</b>
-      <button type="button" class="pchip ${ciOnlyMissing ? 'sel' : ''}" data-act="cifilter">Non pointés seulement (${P.length - ok})</button></div>
-      <p class="muted small">Appelle les non pointés. S'ils sont absents, décoche « présent » avant le tirage.</p>`;
+    const P = state.players.filter(inscrit);
+    const ok = P.filter(here).length;
+    return `<div class="row between"><b>${ok} arrivés / ${P.length} inscrits</b>
+      <button type="button" class="pchip ${ciOnlyMissing ? 'sel' : ''}" data-act="cifilter">Encore attendus (${P.length - ok})</button></div>
+      <p class="muted small">Seuls les joueurs arrivés (pointés) sont tirés au sort. Ils pointent eux-mêmes avec « Je suis là », ou tu les pointes ici avec le bouton « Arrivé ».</p>`;
   }
   function aPlayers() {
     const cos = [...new Set(state.players.map(p => p.co))].sort();
-    const present = state.players.filter(p => p.present !== false).length;
+    const present = state.players.filter(here).length;
     return `<div class="card"><h3>Ajouter un joueur</h3><div class="grid2"><input type="text" id="np_first" placeholder="Prénom"><input type="text" id="np_last" placeholder="Nom"></div>
       <input type="text" id="np_co" placeholder="Société" list="cos"><datalist id="cos">${cos.map(c => `<option value="${esc(c)}">`).join('')}</datalist>
       <select id="np_mode"><option value="tirage">Tirage au sort</option><option value="choisi">Je choisis</option></select>
       <button type="button" class="btn" data-act="addplayer">Ajouter</button></div>
-      <div class="card"><h3>Participants (${present} présents / ${state.players.length})</h3>
+      <div class="card"><h3>Participants (${present} arrivés / ${state.players.length})</h3>
       ${ciBox()}
-      <div class="list">${state.players.filter(p => !ciOnlyMissing || (p.present !== false && !checkins[p.id])).map(p => `<div class="row between"><span>${checkins[p.id] ? '<span class="chip ok">✓</span> ' : ''}<b>${esc(pName(p))}</b> <span class="muted small">${esc(p.co)} · ${p.mode === 'choisi' ? 'choisit' : 'tirage'}</span></span>
-        <span class="row"><label class="small row"><input type="checkbox" data-act="present" data-id="${p.id}" ${p.present !== false ? 'checked' : ''}> présent</label><button type="button" class="btn sm ghost" data-act="mode" data-id="${p.id}">⇄</button></span></div>`).join('')}</div></div>
+      <div class="list">${state.players.filter(p => !ciOnlyMissing || (inscrit(p) && !here(p))).map(p => `<div class="row between"><span><b style="${inscrit(p) ? '' : 'text-decoration:line-through'}">${esc(pName(p))}</b> <span class="muted small">${esc(p.co)} · ${p.mode === 'choisi' ? 'choisit' : 'tirage'}</span></span>
+        <span class="row">${inscrit(p) ? (here(p) ? `<button type="button" class="btn sm" style="background:var(--ok);border-color:var(--ok);color:#fff" data-act="acheckin" data-id="${p.id}" data-on="0">✓ Arrivé</button>` : `<button type="button" class="btn sm ghost" data-act="acheckin" data-id="${p.id}" data-on="1">Arrivé ?</button>`) : ''}<label class="small row"><input type="checkbox" data-act="present" data-id="${p.id}" ${inscrit(p) ? 'checked' : ''}> inscrit</label><button type="button" class="btn sm ghost" data-act="mode" data-id="${p.id}">⇄</button></span></div>`).join('')}</div></div>
       <div class="card"><h3>Pointage</h3>${armBtn('ciclear', 'Effacer tous les pointages', 'danger')}</div>
       <details class="card"><summary>Importer une liste</summary><p class="muted small">Une ligne par joueur : Prénom;Nom;Société;tirage|choisi</p><textarea id="imp"></textarea><button type="button" class="btn ghost" data-act="import">Importer</button></details>`;
   }
   function aPairs() {
     const P = pById(), used = new Set(state.pairs.flatMap(x => [x.a, x.b]));
-    const opts = state.players.filter(p => !used.has(p.id) && p.present !== false).sort((x, y) => (x.mode === 'choisi' ? 0 : 1) - (y.mode === 'choisi' ? 0 : 1) || pName(x).localeCompare(pName(y)))
+    const opts = state.players.filter(p => !used.has(p.id) && inscrit(p)).sort((x, y) => (x.mode === 'choisi' ? 0 : 1) - (y.mode === 'choisi' ? 0 : 1) || pName(x).localeCompare(pName(y)))
       .map(p => `<option value="${p.id}">${esc(pName(p))} (${esc(p.co)}${p.mode === 'choisi' ? ', choisit' : ''})</option>`).join('');
     return `<div class="card"><h3>Binômes choisis</h3><p class="muted small">Saisis ici les réponses reçues sur Teams. Les binômes sont gardés tels quels au tirage.</p>
       <select id="pa">${opts}</select><select id="pb">${opts}</select><button type="button" class="btn" data-act="addpair">Ajouter le binôme</button>
@@ -579,6 +585,7 @@
       if (on && !ls.get('me')) ls.set('me', id);
       store.setCheckin(id, on).then(() => { if (on) { ciQ = ''; toast(t('ciDone')); } render(); });
     },
+    acheckin(el, id) { store.setCheckin(id, el.dataset.on === '1'); },
     ciclear() { store.clearCheckins().then(() => toast('Pointages effacés')); },
     cifilter() { ciOnlyMissing = !ciOnlyMissing; render(); },
     adminquick(el, id) {
@@ -647,7 +654,7 @@
     addto(el, tid) { const pid = selChip; selChip = null; save(s => { const x = s.teams.find(y => y.id === tid); if (x && !x.p.includes(pid)) x.p.push(pid); }); },
     newteam() {
       const inTeam = new Set(state.teams.flatMap(x => x.p));
-      const bench = state.players.filter(p => p.present !== false && !inTeam.has(p.id)).slice(0, 2);
+      const bench = state.players.filter(p => here(p) && !inTeam.has(p.id)).slice(0, 2);
       save(s => { const num = Math.max(0, ...s.teams.map(x => x.num)) + 1; s.teams.push({ id: 'T' + String(num).padStart(2, '0'), num, p: bench.map(p => p.id), chosen: false }); });
     },
     addplayer() {
@@ -670,7 +677,9 @@
   };
 
   function doDraw() {
-    const d = PL.drawTeams(state.players, state.pairs, Date.now());
+    const arrived = state.players.map(p => Object.assign({}, p, { present: here(p) }));
+    if (!arrived.some(p => p.present)) { toast('Personne n\'a encore pointé : rien à tirer'); return; }
+    const d = PL.drawTeams(arrived, state.pairs, Date.now());
     const hadRounds = state.rounds.length > 0;
     save(s => { s.teams = d.teams; s.rounds = []; s.phase = 'setup'; s.lastDraw = d.stats; })
       .then(() => { if (hadRounds) store.clearResults(); toast(`${d.teams.length} équipes · ${d.stats.mixed}/${d.stats.drawn} inter-sociétés`); });
