@@ -13,6 +13,7 @@
   // ---------------- textes FR / EN ----------------
   const I = {
     fr: {
+      ciTitle: 'Je suis là !', ciHelp: 'Avant le tirage au sort, cherche ton nom et confirme ta présence. Tu peux aussi pointer un collègue qui est avec toi.', ciBtn: 'Je suis là', ciUndo: 'Pointé · annuler', ciDone: 'présence confirmée', ciCount: 'participants ont confirmé leur présence',
       tabMe: 'Mon match', tabRound: 'Direct', tabRank: 'Classement', tabRules: 'Règles', admin: 'Organisateur',
       pickTeam: 'Quelle est ton équipe ?', pickHelp: 'Cherche ton nom. L’app s’en souviendra sur ce téléphone.',
       search: 'Nom ou prénom', team: 'Équipe', change: 'Changer d’équipe', noTeams: 'Les équipes ne sont pas encore formées. Reviens un peu avant 17h15.',
@@ -31,6 +32,7 @@
       pin: 'Code organisateur', enter: 'Entrer', badPin: 'Code incorrect', logout: 'Quitter le mode organisateur'
     },
     en: {
+      ciTitle: "I'm here!", ciHelp: 'Before the draw, find your name and confirm you are here. You can also check in a colleague who is with you.', ciBtn: "I'm here", ciUndo: 'Checked in · undo', ciDone: 'presence confirmed', ciCount: 'participants have checked in',
       tabMe: 'My match', tabRound: 'Live', tabRank: 'Standings', tabRules: 'Rules', admin: 'Organiser',
       pickTeam: 'Which team are you on?', pickHelp: 'Search your name. The app will remember it on this phone.',
       search: 'First or last name', team: 'Team', change: 'Change team', noTeams: 'Teams have not been formed yet. Check back shortly before 5:15 pm.',
@@ -71,14 +73,18 @@
         onResults: cb => db.collection('m').onSnapshot(q => { const o = {}; q.forEach(d => { o[d.id] = d.data(); }); cb(o); }, err),
         setState: s => db.doc('t/state').set(clean(s)),
         setResult: (id, r) => db.collection('m').doc(id).set(clean(r)),
-        clearResults: async () => { const q = await db.collection('m').get(); const b = db.batch(); q.forEach(d => b.delete(d.ref)); await b.commit(); }
+        clearResults: async () => { const q = await db.collection('m').get(); const b = db.batch(); q.forEach(d => b.delete(d.ref)); await b.commit(); },
+        // pointage : un document par joueur (pas de conflit si 70 personnes pointent en même temps)
+        onCheckins: cb => db.collection('c').onSnapshot(q => { const o = {}; q.forEach(d => { o[d.id] = d.data(); }); cb(o); }, err),
+        setCheckin: (pid, on) => on ? db.collection('c').doc(pid).set({ at: Date.now() }) : db.collection('c').doc(pid).delete(),
+        clearCheckins: async () => { const q = await db.collection('c').get(); const b = db.batch(); q.forEach(d => b.delete(d.ref)); await b.commit(); }
       };
     }
     // Mode démo : localStorage + synchronisation entre onglets
-    const subs = { s: [], r: [] };
+    const subs = { s: [], r: [], c: [] };
     const read = k => { try { return JSON.parse(localStorage.getItem('pet26.demo.' + k)); } catch (e) { return null; } };
     const write = (k, v) => { try { localStorage.setItem('pet26.demo.' + k, JSON.stringify(v)); } catch (e) { } };
-    const fire = () => { subs.s.forEach(f => f(read('state'))); subs.r.forEach(f => f(read('results') || {})); };
+    const fire = () => { subs.s.forEach(f => f(read('state'))); subs.r.forEach(f => f(read('results') || {})); subs.c.forEach(f => f(read('checkins') || {})); };
     window.addEventListener('storage', e => { if (e.key && e.key.startsWith('pet26.demo.')) fire(); });
     return {
       kind: 'demo',
@@ -86,21 +92,25 @@
       onResults: cb => { subs.r.push(cb); setTimeout(() => cb(read('results') || {}), 0); },
       setState: async s => { write('state', clean(s)); fire(); },
       setResult: async (id, r) => { const o = read('results') || {}; o[id] = clean(r); write('results', o); fire(); },
-      clearResults: async () => { write('results', {}); fire(); }
+      clearResults: async () => { write('results', {}); fire(); },
+      onCheckins: cb => { subs.c.push(cb); setTimeout(() => cb(read('checkins') || {}), 0); },
+      setCheckin: async (pid, on) => { const o = read('checkins') || {}; if (on) o[pid] = { at: Date.now() }; else delete o[pid]; write('checkins', o); fire(); },
+      clearCheckins: async () => { write('checkins', {}); fire(); }
     };
   }
 
   // ---------------- état ----------------
-  let state = null, results = {}, loaded = { s: false, r: false };
+  let state = null, results = {}, checkins = {}, ciQ = '', loaded = { s: false, r: false };
   let view = ls.get('view') || 'me';
   let myTeam = ls.get('team');
   let isAdmin = ls.get('admin') === '1';
-  let searchQ = '', liveQ = '', liveSort = 'rank', draft = {}, editing = {}, selChip = null, armed = {}, sheetTeam = null, roundView = null, adminTab = ls.get('atab') || 'tour';
+  let ciOnlyMissing = false, searchQ = '', liveQ = '', liveSort = 'rank', draft = {}, editing = {}, selChip = null, armed = {}, sheetTeam = null, roundView = null, adminTab = ls.get('atab') || 'tour';
   const store = makeStore();
   if (store.kind === 'demo') showBanner(t('demo'));
 
   store.onState(s => { state = Object.assign(DEFAULT_STATE(), s || {}); loaded.s = true; render(); });
   store.onResults(r => { results = r || {}; loaded.r = true; render(); });
+  store.onCheckins(c => { checkins = c || {}; render(); });
 
   function save(mut) {
     const s = clean(state); mut(s); s.updatedAt = Date.now();
@@ -149,7 +159,8 @@
   // ----- Mon match -----
   function vMe() {
     const T = tById();
-    if (!state.teams.length) return `<div class="card"><h2>${t('tabMe')}</h2><p>${t('noTeams')}</p></div>`;
+    if (!state.teams.length) return vCheckin();
+    if ((!myTeam || !T[myTeam]) && ls.get('me')) { const mt = state.teams.find(x => x.p.includes(ls.get('me'))); if (mt) { myTeam = mt.id; ls.set('team', mt.id); } }
     if (!myTeam || !T[myTeam]) return vPicker();
     const team = T[myTeam], S = standings(), s = S[myTeam];
     const R = ranked(), me = R.find(x => x.id === myTeam);
@@ -168,6 +179,25 @@
     out += historyCard(s);
     out += `<button type="button" class="btn ghost full" data-act="unpick">${t('change')}</button>`;
     return out;
+  }
+  // ----- Pointage « Je suis là » (avant le tirage) -----
+  function vCheckin() {
+    const P = state.players.filter(p => p.present !== false);
+    const me = ls.get('me'), meP = P.find(p => p.id === me);
+    const n = P.filter(p => checkins[p.id]).length;
+    let h = `<div class="card"><h2>${t('ciTitle')}</h2><p class="muted small">${t('ciHelp')}</p>`;
+    if (meP && checkins[meP.id]) h += `<p class="chip ok">✓ ${esc(pName(meP))} · ${esc(meP.co)} — ${t('ciDone')}</p>`;
+    const q = ciQ.trim().toLowerCase();
+    const list = q.length >= 2 ? P.filter(p => pName(p).toLowerCase().includes(q) || (p.last + ' ' + p.first).toLowerCase().includes(q)).slice(0, 12) : [];
+    h += `<input type="search" id="ciq" placeholder="${t('search')}" autocomplete="off" value="${esc(ciQ)}" data-keep="no">
+      <div>${list.map(p => {
+        const on = !!checkins[p.id];
+        return `<div class="pick" style="cursor:default"><span><b>${esc(pName(p))}</b><br><span class="names">${esc(p.co)}</span></span>
+          ${on ? `<button type="button" class="btn sm ghost" data-act="checkin" data-id="${p.id}" data-on="0">✓ ${t('ciUndo')}</button>` : `<button type="button" class="btn sm" data-act="checkin" data-id="${p.id}" data-on="1">${t('ciBtn')}</button>`}</div>`;
+      }).join('')}${q.length >= 2 && !list.length ? `<p class="muted small">${t('noMatch')}</p>` : ''}</div>
+      <p class="muted small">${n} / ${P.length} ${t('ciCount')}</p></div>
+      <div class="card"><p class="small">${t('noTeams')}</p></div>`;
+    return h;
   }
   function scheduleLine(n) {
     if (n > state.cfg.rounds) return '';
@@ -412,6 +442,7 @@
     const present = state.players.filter(p => p.present !== false).length;
     let h = `<div class="card"><h3>Tirage des équipes</h3>
       <p class="small">${present} joueurs présents · ${state.pairs.length} binômes choisis${present % 2 ? ' · nombre impair : une triplette sera formée' : ''}.</p>
+      ${(() => { const miss = state.players.filter(p => p.present !== false && !checkins[p.id]); return miss.length && miss.length < state.players.length ? `<p class="small" style="color:var(--warn)"><b>${miss.length} présents n'ont pas pointé :</b> ${miss.map(p => esc(pName(p))).join(', ')}</p>` : ''; })()}
       ${unpairedChosen.length ? `<p class="small">« Je choisis » sans binôme (iront au tirage) : ${unpairedChosen.map(p => esc(pName(p))).join(', ')}</p>` : ''}
       ${state.rounds.length ? '<p class="small" style="color:var(--bad)">Le tournoi a commencé : refaire le tirage efface les tours et les scores.</p>' : ''}
       ${armBtn('draw', state.teams.length ? 'Refaire le tirage' : 'Tirer les équipes', '')}
@@ -430,6 +461,13 @@
     return `<span class="pchip ${selChip === p.id ? 'sel' : ''}" data-act="chip" data-id="${p.id}" role="button" tabindex="0" style="${abs ? 'text-decoration:line-through;border-color:var(--bad)' : ''}">${esc(pName(p))} <span class="muted small">${esc(p.co)}</span>${!onBench ? `<button type="button" class="x" data-act="tobench" data-id="${p.id}" data-team="${teamId}" aria-label="Retirer">×</button>` : ''}</span>`;
   }
 
+  function ciBox() {
+    const P = state.players.filter(p => p.present !== false);
+    const ok = P.filter(p => checkins[p.id]).length;
+    return `<div class="row between"><b>${ok} / ${P.length} ont pointé « Je suis là »</b>
+      <button type="button" class="pchip ${ciOnlyMissing ? 'sel' : ''}" data-act="cifilter">Non pointés seulement (${P.length - ok})</button></div>
+      <p class="muted small">Appelle les non pointés. S'ils sont absents, décoche « présent » avant le tirage.</p>`;
+  }
   function aPlayers() {
     const cos = [...new Set(state.players.map(p => p.co))].sort();
     const present = state.players.filter(p => p.present !== false).length;
@@ -437,8 +475,11 @@
       <input type="text" id="np_co" placeholder="Société" list="cos"><datalist id="cos">${cos.map(c => `<option value="${esc(c)}">`).join('')}</datalist>
       <select id="np_mode"><option value="tirage">Tirage au sort</option><option value="choisi">Je choisis</option></select>
       <button type="button" class="btn" data-act="addplayer">Ajouter</button></div>
-      <div class="card"><h3>Participants (${present} présents / ${state.players.length})</h3><div class="list">${state.players.map(p => `<div class="row between"><span><b>${esc(pName(p))}</b> <span class="muted small">${esc(p.co)} · ${p.mode === 'choisi' ? 'choisit' : 'tirage'}</span></span>
+      <div class="card"><h3>Participants (${present} présents / ${state.players.length})</h3>
+      ${ciBox()}
+      <div class="list">${state.players.filter(p => !ciOnlyMissing || (p.present !== false && !checkins[p.id])).map(p => `<div class="row between"><span>${checkins[p.id] ? '<span class="chip ok">✓</span> ' : ''}<b>${esc(pName(p))}</b> <span class="muted small">${esc(p.co)} · ${p.mode === 'choisi' ? 'choisit' : 'tirage'}</span></span>
         <span class="row"><label class="small row"><input type="checkbox" data-act="present" data-id="${p.id}" ${p.present !== false ? 'checked' : ''}> présent</label><button type="button" class="btn sm ghost" data-act="mode" data-id="${p.id}">⇄</button></span></div>`).join('')}</div></div>
+      <div class="card"><h3>Pointage</h3>${armBtn('ciclear', 'Effacer tous les pointages', 'danger')}</div>
       <details class="card"><summary>Importer une liste</summary><p class="muted small">Une ligne par joueur : Prénom;Nom;Société;tirage|choisi</p><textarea id="imp"></textarea><button type="button" class="btn ghost" data-act="import">Importer</button></details>`;
   }
   function aPairs() {
@@ -489,6 +530,7 @@
   document.addEventListener('input', e => {
     if (e.target.id === 'q') { searchQ = e.target.value; render(); return; }
     if (e.target.id === 'lq') { liveQ = e.target.value; render(); return; }
+    if (e.target.id === 'ciq') { ciQ = e.target.value; render(); return; }
     const el = e.target;
     if (el.dataset && el.dataset.score) {
       // saisie directe du score : on met à jour le brouillon sans redessiner (garde le curseur)
@@ -510,7 +552,7 @@
   const actions = {
     view(el) { view = el.dataset.v; ls.set('view', view === 'admin' ? 'rules' : view); window.scrollTo(0, 0); render(); },
     pick(el, id) { myTeam = id; ls.set('team', id); searchQ = ''; render(); },
-    unpick() { myTeam = null; ls.set('team', null); render(); },
+    unpick() { myTeam = null; ls.set('team', null); ls.set('me', null); render(); },
     step(el, id) { const d = draft[id]; d[el.dataset.k] = Math.min(13, Math.max(0, d[el.dataset.k] + Number(el.dataset.d))); render(); scheduleLive(id); },
     editscore(el, id) { editing[id] = true; render(); },
     send(el, id) {
@@ -532,6 +574,13 @@
       store.setResult(id, { a: m.a, b: m.b, sa, sb, by: myTeam, status: 'live', at });
     },
     livesort(el) { liveSort = el.dataset.k; render(); },
+    checkin(el, id) {
+      const on = el.dataset.on === '1';
+      if (on && !ls.get('me')) ls.set('me', id);
+      store.setCheckin(id, on).then(() => { if (on) { ciQ = ''; toast(t('ciDone')); } render(); });
+    },
+    ciclear() { store.clearCheckins().then(() => toast('Pointages effacés')); },
+    cifilter() { ciOnlyMissing = !ciOnlyMissing; render(); },
     adminquick(el, id) {
       const r = results[id];
       store.setResult(id, Object.assign({}, r, { status: 'validated', confirmedBy: 'admin', at: Date.now() })).then(() => toast(t('saved')));
@@ -549,6 +598,7 @@
       if (!armed[k]) { armed[k] = true; render(); setTimeout(() => { if (armed[k]) { delete armed[k]; render(); } }, 4000); return; }
       delete armed[k];
       if (k === 'draw') return doDraw();
+      if (k === 'ciclear') return actions.ciclear();
       if (k === 'undo') return save(s => { s.rounds.pop(); s.phase = s.rounds.length ? 'running' : 'setup'; });
       if (k === 'reset') return save(s => { s.rounds = []; s.phase = 'setup'; }).then(() => store.clearResults());
       if (k.startsWith('delteam_')) { const tid = k.slice(8); return save(s => { s.teams = s.teams.filter(x => x.id !== tid); }); }
