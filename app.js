@@ -4,6 +4,8 @@
   const CFG = window.APP_CONFIG || {};
   const SCREEN = /ecran|screen/i.test(location.search + location.hash);
   if (SCREEN) document.documentElement.classList.add('screen');
+  const GESTION = !SCREEN && /gestion|manage/i.test(location.search + location.hash);
+  if (GESTION) document.documentElement.classList.add('gestion');
   const $ = s => document.querySelector(s);
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const ls = {
@@ -151,7 +153,7 @@
     // préserve les champs de saisie entre deux rendus
     const keep = {}; document.querySelectorAll('#app [id]').forEach(el => { if ('value' in el && el.type !== 'button') keep[el.id] = el.type === 'checkbox' ? el.checked : el.value; });
     const focus = document.activeElement && document.activeElement.id;
-    const html = view === 'round' ? vRound() : view === 'rank' ? vRank() : view === 'rules' ? vRules() : view === 'admin' ? vAdmin() : vMe();
+    const html = GESTION ? vGestion() : view === 'round' ? vRound() : view === 'rank' ? vRank() : view === 'rules' ? vRules() : view === 'admin' ? vAdmin() : vMe();
     $('#app').innerHTML = html;
     Object.entries(keep).forEach(([id, v]) => { const el = document.getElementById(id); if (el && el.dataset.keep !== 'no') { if (el.type === 'checkbox') el.checked = v; else el.value = v; } });
     if (focus) { const el = document.getElementById(focus); if (el) { el.focus(); if (el.setSelectionRange && el.type === 'search') { const n = el.value.length; el.setSelectionRange(n, n); } } }
@@ -186,6 +188,82 @@
     out += `<button type="button" class="btn ghost full" data-act="unpick">${t('change')}</button>`;
     return out;
   }
+  // ----- Tableau de bord organisateur sur portable (?gestion) -----
+  function vGestion() {
+    if (!isAdmin) return `<div class="card" style="max-width:420px"><h2>${t('admin')}</h2><label class="lbl" for="pin">${t('pin')}</label><input type="password" id="pin" inputmode="numeric" autocomplete="off"><button type="button" class="btn" data-act="login">${t('enter')}</button></div>`;
+    const T = tById(), P = pById(), c = state.cfg, r = curRound(), st = r ? roundStatus(r) : null;
+    const nextN = state.rounds.length + 1;
+    const canNext = state.teams.length >= 2 && (!r || st.valid === st.total) && nextN <= c.rounds;
+    const sc = PL.schedule(c, Math.max(c.rounds, state.rounds.length + 1));
+    const ins = state.players.filter(inscrit), arrived = ins.filter(here), miss = ins.filter(p => !here(p)).sort((a, b) => a.last.localeCompare(b.last));
+    const brokenPairs = state.pairs.filter(x => P[x.a] && P[x.b] && here(P[x.a]) !== here(P[x.b]));
+    const counts = r ? r.matches.reduce((o, m) => { const x = resultFor(m); const k = x ? x.status : 'none'; o[k] = (o[k] || 0) + 1; return o; }, {}) : {};
+    const phase = !state.teams.length ? 'Arrivées / pointage' : !state.rounds.length ? 'Équipes tirées, prêt à lancer' : (st.valid === st.total && nextN > c.rounds ? 'Tournoi terminé' : `Tour ${r.n} en cours`);
+    // barre du haut
+    let h = `<header class="g-top">
+      <div><div class="lbl">Phase</div><b class="g-phase">${phase}</b></div>
+      <div><div class="lbl">Tour</div><b>${r ? r.n : 0} / ${c.rounds}</b></div>
+      <div><div class="lbl">Chrono</div>${r && r.startedAt ? `<span class="clock g-clock" data-clock="${r.startedAt}">--:--</span>` : '<b class="muted">—</b>'}</div>
+      <div><div class="lbl">Arrivés</div><b>${arrived.length} / ${ins.length}</b></div>
+      <div><div class="lbl">Équipes</div><b>${state.teams.length}</b></div>
+      ${r ? `<div><div class="lbl">Scores tour ${r.n}</div><span class="chip ok">${counts.validated || 0} validés</span> <span class="chip warn">${(counts.live || 0) + (counts.submitted || 0)} en cours/à confirmer</span> ${counts.disputed ? `<span class="chip bad">${counts.disputed} contestés</span>` : ''} <span class="chip soft">${counts.none || 0} sans score</span></div>` : ''}
+      <div class="g-actions">
+        ${!state.rounds.length ? armBtn('draw', state.teams.length ? 'Refaire le tirage' : 'Tirer les équipes', 'sm') : ''}
+        <button type="button" class="btn sm" data-act="gen" ${canNext ? '' : 'disabled'}>Générer tour ${nextN}</button>
+        ${r ? `<button type="button" class="btn sm ghost" data-act="startclock">${r.startedAt ? 'Redémarrer' : 'Démarrer'} chrono</button>` : ''}
+        ${nextN > c.rounds ? `<button type="button" class="btn sm ghost" data-act="addround">+ Tour ${c.rounds + 1}</button>` : ''}
+        ${r ? armBtn('undo', 'Annuler tour ' + r.n, 'sm danger') : ''}
+        <a class="btn sm ghost" href="./?ecran" target="_blank" rel="noopener">Écran géant ↗</a>
+        <a class="btn sm ghost" href="./" target="_blank" rel="noopener">App complète ↗</a>
+      </div></header>`;
+    // colonne 1 : pointage + paramètres
+    let c1 = `<section class="card"><div class="row between"><h3>Pointage</h3><span class="chip ${miss.length ? 'warn' : 'ok'}">${arrived.length} / ${ins.length}</span></div>
+      ${brokenPairs.length ? `<p class="small" style="color:var(--bad)"><b>Binôme incomplet :</b> ${brokenPairs.map(x => `${esc(pName(P[x.a]))} + ${esc(pName(P[x.b]))}`).join(' ; ')}</p>` : ''}
+      <div class="lbl">Encore attendus (${miss.length})</div>
+      <div class="g-list">${miss.map(p => `<div class="row between"><span>${esc(pName(p))} <span class="muted small">${esc(p.co)}</span></span><button type="button" class="btn sm ghost" data-act="acheckin" data-id="${p.id}" data-on="1">Arrivé</button></div>`).join('') || '<p class="muted small">Tout le monde est là.</p>'}</div>
+      <p class="muted small">${state.pairs.length} binômes choisis · ${state.rounds.length ? 'tournoi lancé' : 'pas encore de tour'}</p></section>
+      <section class="card"><h3>Timing</h3><div class="grid2">
+        <label class="small">Tours<input type="number" id="c_rounds" min="1" max="12" value="${c.rounds}"></label>
+        <label class="small">Début<input type="time" id="c_start" value="${esc(c.start)}"></label>
+        <label class="small">Match (min)<input type="number" id="c_match" min="5" max="60" value="${c.matchMin}"></label>
+        <label class="small">Pause (min)<input type="number" id="c_pause" min="0" max="30" value="${c.pauseMin}"></label></div>
+        <select id="c_rank" style="display:none"><option value="${c.rankMode || 'wins'}" selected></option></select>
+        <button type="button" class="btn sm ghost" data-act="savecfg">Enregistrer</button>
+        <p class="muted small">${sc.map(x => `T${x.n} ${x.start}`).join(' · ')}</p></section>`;
+    // colonne 2 : matchs du tour
+    let c2 = '';
+    if (r) {
+      const ms = r.matches.slice().sort((a, b) => {
+        const o = x => { const z = resultFor(x); return z ? ({ disputed: 0, submitted: 1, live: 2, validated: 4 }[z.status] ?? 3) : 3; };
+        return o(a) - o(b) || a.terrain - b.terrain;
+      });
+      c2 = `<section class="card"><div class="row between"><h3>Tour ${r.n} · matchs</h3><span class="muted small">contestés et à confirmer en premier</span></div>
+        <table class="g-tbl"><thead><tr><th>T.</th><th>Équipe A</th><th class="n">A</th><th class="n">B</th><th>Équipe B</th><th>État</th><th></th></tr></thead><tbody>
+        ${ms.map(m => { const res = resultFor(m), stt = res ? res.status : 'none';
+          return `<tr class="${stt === 'disputed' ? 'g-bad' : stt === 'validated' ? 'g-ok' : ''}"><td><b>${m.terrain}</b><div class="muted small">${esc(surfaceOf(m.terrain))}</div></td>
+            <td><b>${String(T[m.a].num).padStart(2, '0')}</b> <span class="small">${teamNames(T[m.a], true)}</span></td>
+            <td class="n"><input class="g-in" type="number" min="0" max="13" id="sa_${m.id}" value="${res ? res.sa : ''}" inputmode="numeric"></td>
+            <td class="n"><input class="g-in" type="number" min="0" max="13" id="sb_${m.id}" value="${res ? res.sb : ''}" inputmode="numeric"></td>
+            <td><b>${String(T[m.b].num).padStart(2, '0')}</b> <span class="small">${teamNames(T[m.b], true)}</span></td>
+            <td>${statusChip(res)}</td>
+            <td class="g-btns">${res && stt !== 'validated' && !PL.validateScore(res.sa, res.sb) ? `<button type="button" class="btn sm" data-act="adminquick" data-id="${m.id}">✓ ${res.sa}:${res.sb}</button>` : ''}<button type="button" class="btn sm ghost" data-act="adminscore" data-id="${m.id}">Valider</button></td></tr>`; }).join('')}
+        ${r.bye ? `<tr><td>—</td><td colspan="6">Exempt : ${teamLabel(T[r.bye])} (${teamNames(T[r.bye], true)})</td></tr>` : ''}
+        </tbody></table></section>`;
+    } else if (state.teams.length) {
+      c2 = `<section class="card"><h3>Équipes (${state.teams.length})</h3><p class="muted small">Pour échanger des joueurs, ouvre l'app complète > Organisateur > Équipes.</p>
+        <div class="g-teams">${state.teams.map(x => `<div><b>${String(x.num).padStart(2, '0')}</b> ${teamNames(x, true)} ${x.chosen ? '<span class="chip soft">choisi</span>' : ''}</div>`).join('')}</div></section>`;
+    } else {
+      c2 = `<section class="card"><h3>Avant le tirage</h3><p class="small">${arrived.length} joueurs arrivés seront tirés au sort${arrived.length % 2 ? ' (nombre impair : une triplette sera formée)' : ''}. Les absents restent hors tirage.</p></section>`;
+    }
+    // colonne 3 : classement complet
+    let c3 = '';
+    if (state.teams.length) {
+      const R = ranked();
+      c3 = `<section class="card"><h3>Classement</h3><table class="g-rank"><tbody>${R.map(x => `<tr class="click" data-act="sheet" data-id="${x.id}"><td class="c-rk">${x.rank}</td><td><b>${String(x.num).padStart(2, '0')}</b> <span class="small">${teamNames(T[x.id], true)}</span></td><td>${pastLine(x)}</td><td class="n"><b>${x.w}-${x.l}</b></td><td class="n muted">${Math.round(x.elo)}</td><td class="n muted">${x.diff > 0 ? '+' : ''}${x.diff}</td></tr>`).join('')}</tbody></table></section>`;
+    }
+    return h + `<div class="g-grid"><div class="g-col">${c1}</div><div class="g-col">${c2}</div><div class="g-col">${c3}</div></div>`;
+  }
+
   // ----- Écran géant (?ecran ou #ecran) -----
   function vScreen() {
     const T = tById(), P = pById();

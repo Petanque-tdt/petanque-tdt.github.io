@@ -96,6 +96,34 @@ td.go{font-size:1.5rem;line-height:1;color:var(--muted);padding-left:2px;padding
 details>summary{cursor:pointer;font-weight:700;padding:4px 0}
 @media (prefers-reduced-motion:no-preference){.card{transition:background .2s}}
 
+/* ===== Tableau de bord organisateur (?gestion) : portable, tout sur une page ===== */
+html.gestion body{padding-bottom:0;font-size:13px}
+html.gestion .tabs{display:none}
+html.gestion main{max-width:none;padding:10px 14px;gap:10px}
+.g-top{display:flex;flex-wrap:wrap;gap:8px 22px;align-items:center;background:var(--card);border:var(--cardline);border-radius:var(--r);padding:10px 14px}
+.g-top b{font-size:1.1rem}.g-phase{color:var(--accent)}
+.g-clock{font-size:1.6rem}
+.g-actions{margin-left:auto;display:flex;flex-wrap:wrap;gap:6px}
+.g-actions .btn,.g-actions a.btn{text-decoration:none}
+.g-grid{display:grid;grid-template-columns:minmax(230px,1fr) minmax(0,2.4fr) minmax(0,1.6fr);gap:10px;align-items:start}
+.g-col{display:flex;flex-direction:column;gap:10px;min-width:0}
+.g-col .card{padding:10px 12px;gap:6px}
+.g-col h3{margin:0}
+.g-list{max-height:46vh;overflow:auto;display:flex;flex-direction:column}
+.g-list>div{padding:4px 0;border-top:1px solid var(--line)}
+.g-tbl,.g-rank{font-size:12px}
+.g-tbl td,.g-rank td{padding:4px 4px}
+.g-tbl th{padding:4px}
+.g-in{width:46px!important;min-height:30px!important;padding:3px 4px!important;text-align:center;font-weight:700}
+.g-btns{white-space:nowrap}.g-btns .btn{min-height:28px;padding:3px 8px;font-size:.75rem}
+.g-tbl tr.g-bad td{background:rgba(200,16,46,.10)}
+.g-tbl tr.g-ok td{opacity:.65}
+.g-tbl .chip{white-space:nowrap}
+html.gestion .top{padding-block:6px}html.gestion .brand small{display:none}
+.g-rank td.c-rk{font-weight:800;color:var(--accent);width:24px}
+.g-rank .dots{margin:0}.g-rank .dot{width:9px;height:9px}
+.g-teams{display:grid;grid-template-columns:repeat(2,1fr);gap:3px 14px;font-size:12px}
+@media (max-width:1100px){.g-grid{grid-template-columns:1fr 1fr}.g-col:last-child{grid-column:1/-1}}
 /* ===== Écran géant (?ecran) : fond blanc pour projecteur, gros caractères, sans navigation ===== */
 html.screen body{background:#ffffff;color:#111111;padding:0;font-size:1.25vw;overflow:hidden}
 html.screen .top,html.screen .tabs,html.screen #banner,html.screen .toast{display:none!important}
