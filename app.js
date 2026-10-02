@@ -2,6 +2,8 @@
 (function () {
   'use strict';
   const CFG = window.APP_CONFIG || {};
+  const SCREEN = /ecran|screen/i.test(location.search + location.hash);
+  if (SCREEN) document.documentElement.classList.add('screen');
   const $ = s => document.querySelector(s);
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const ls = {
@@ -145,6 +147,7 @@
     $('#sub').textContent = (CFG.subtitle || {})[lang] || '';
     renderTabs();
     if (!loaded.s) { $('#app').innerHTML = '<div class="card"><p class="muted">…</p></div>'; return; }
+    if (SCREEN) { $('#app').innerHTML = vScreen(); tick(); return; }
     // préserve les champs de saisie entre deux rendus
     const keep = {}; document.querySelectorAll('#app [id]').forEach(el => { if ('value' in el && el.type !== 'button') keep[el.id] = el.type === 'checkbox' ? el.checked : el.value; });
     const focus = document.activeElement && document.activeElement.id;
@@ -183,6 +186,53 @@
     out += `<button type="button" class="btn ghost full" data-act="unpick">${t('change')}</button>`;
     return out;
   }
+  // ----- Écran géant (?ecran ou #ecran) -----
+  function vScreen() {
+    const T = tById(), P = pById();
+    const url = location.host + (location.pathname.length > 1 ? location.pathname : '');
+    const qr = `<div class="scr-qr"><img src="qr.png" alt="QR code"><div class="scr-url">${esc(url)}</div></div>`;
+    const sn = id => teamNames(T[id], true);
+    // 1) Avant le tirage : arrivées
+    if (!state.teams.length) {
+      const ins = state.players.filter(inscrit), ok = ins.filter(here);
+      const miss = ins.filter(p => !here(p)).sort((a, b) => a.last.localeCompare(b.last));
+      const recent = ok.slice().sort((a, b) => (checkins[b.id].at || 0) - (checkins[a.id].at || 0)).slice(0, 8);
+      const pct = ins.length ? Math.round(100 * ok.length / ins.length) : 0;
+      return `<div class="scr scr-ci">
+        <section class="scr-left"><h1>Pétanque 2026</h1><p class="scr-lead">Scanne le QR code<br>et appuie sur <b>« Je suis là »</b></p>${qr}
+          <p class="scr-sub">Scan the QR code and tap <b>“I'm here”</b></p></section>
+        <section class="scr-right"><div class="scr-count"><span class="big-n">${ok.length}</span><span> / ${ins.length} arrivés</span></div>
+          <div class="scr-bar"><i style="width:${pct}%"></i></div>
+          ${recent.length ? `<h2>Derniers arrivés</h2><div class="scr-recent">${recent.map(p => `<span>✓ ${esc(pName(p))} <small>${esc(p.co)}</small></span>`).join('')}</div>` : ''}
+          <h2>Encore attendus (${miss.length})</h2>
+          <div class="scr-miss ${miss.length > 45 ? 'dense' : ''}">${miss.map(p => `<span>${esc(p.first)} <b>${esc(p.last)}</b> <small>${esc(p.co)}</small></span>`).join('')}</div></section></div>`;
+    }
+    const R = ranked();
+    const rankBox = (n, title) => `<section class="scr-rank"><h2>${title}</h2><table>${R.slice(0, n).map(x => `<tr><td><span class="rk">${x.rank}</span></td><td><b>${String(x.num).padStart(2, '0')}</b> ${sn(x.id)}${pastLine(x)}</td><td class="n">${x.w}-${x.l}</td><td class="n muted">${Math.round(x.elo)}</td></tr>`).join('')}</table></section>`;
+    // 2) Équipes tirées, tournoi pas commencé
+    if (!state.rounds.length) {
+      return `<div class="scr scr-teams"><header class="scr-head"><h1>Les équipes</h1><p>Trouve ton équipe dans l'app · <i>Find your team in the app</i> · début ${esc(state.cfg.start.replace(':', 'h'))}</p></header>
+        <div class="scr-tgrid">${state.teams.map(x => `<div><b>${String(x.num).padStart(2, '0')}</b> ${teamNames(x)}</div>`).join('')}</div>${qr}</div>`;
+    }
+    // 3) Tournoi en cours
+    const r = curRound(), st = roundStatus(r);
+    const done = state.rounds.length >= state.cfg.rounds && st.valid === st.total;
+    if (done) {
+      return `<div class="scr scr-final"><header class="scr-head"><h1>Classement final</h1><p>Bravo à tous ! · <i>Well played everyone!</i></p></header>
+        <div class="scr-podium">${R.slice(0, 3).map((x, i) => `<div class="pod p${i + 1}"><span class="pod-n">${i + 1}</span><b>Équipe ${String(x.num).padStart(2, '0')}</b><span>${teamNames(T[x.id])}</span><small>${x.w} victoires · ${Math.round(x.elo)} pts</small></div>`).join('')}</div>
+        ${rankBox(16, 'Classement')}</div>`;
+    }
+    const sc = PL.schedule(state.cfg, Math.max(state.cfg.rounds, r.n + 1))[r.n];
+    const ms = r.matches.slice().sort((a, b) => a.terrain - b.terrain);
+    const score = res => !res ? '<span class="sc none">–</span>' : `<span class="sc ${res.status === 'validated' ? 'ok' : res.status === 'disputed' ? 'bad' : 'live'}">${res.sa}:${res.sb}</span>`;
+    return `<div class="scr scr-live"><header class="scr-head row between"><div><h1>Tour ${r.n} <small>/ ${state.cfg.rounds}</small></h1><p>${st.valid}/${st.total} matchs terminés${sc && r.n < state.cfg.rounds ? ` · tour ${r.n + 1} à ${sc.start}` : ''}</p></div>
+        <div class="scr-clock">${r.startedAt ? `<span class="clock" data-clock="${r.startedAt}">--:--</span>` : '<span class="muted">chrono en attente</span>'}</div></header>
+      <div class="scr-body"><section class="scr-matches">${ms.map(m => { const res = resultFor(m); return `<div class="scr-m ${res && res.status === 'validated' ? 'fin' : ''}"><div class="scr-t">T${m.terrain}${surfaceOf(m.terrain) ? ` <small>${esc(surfaceOf(m.terrain))}</small>` : ''}</div>
+          <div class="scr-a"><b>${String(T[m.a].num).padStart(2, '0')}</b> ${sn(m.a)}</div>${score(res)}<div class="scr-b"><b>${String(T[m.b].num).padStart(2, '0')}</b> ${sn(m.b)}</div></div>`; }).join('')}
+          ${r.bye ? `<div class="scr-m"><div class="scr-t">BYE</div><div class="scr-a">${sn(r.bye)}</div></div>` : ''}</section>
+        ${rankBox(14, 'Classement')}</div></div>`;
+  }
+
   // ----- Pointage « Je suis là » (avant le tirage) -----
   function vCheckin() {
     const P = state.players.filter(p => p.present !== false);
@@ -517,6 +567,7 @@
     });
   }
   setInterval(tick, 1000);
+  if (SCREEN) setInterval(() => render(), 30000);
 
   // ---------------- actions ----------------
   function toast(msg) { const el = $('#toast'); el.textContent = msg; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => { el.hidden = true; }, 2600); }
