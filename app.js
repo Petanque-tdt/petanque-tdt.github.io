@@ -326,6 +326,32 @@
       <p class="pr-help">Flèches ← → ou espace pour avancer · Échap pour fermer · clic sur un point pour y aller</p></div>`;
   }
 
+  // Classement des sociétés : chaque joueur rapporte les résultats de son équipe à sa société
+  // (retraités rattachés à leur société d'origine). Score = % de victoires moyen par joueur,
+  // donc équitable entre grandes et petites sociétés ; départage : écart de points moyen par match.
+  function companyStandings() {
+    const P = pById(), T = tById(), C = {}, label = {};
+    state.players.forEach(p => { const k = PL.normCo(p.co); if (!/retrait/i.test(p.co)) label[k] = label[k] || p.co.replace(/\s+(Group|SA)$/i, ''); });
+    (state.rounds || []).forEach(r => r.matches.forEach(m => {
+      const res = resultFor(m);
+      if (!res || res.status !== 'validated') return;
+      [[m.a, res.sa - res.sb], [m.b, res.sb - res.sa]].forEach(([tid, d]) => (T[tid] ? T[tid].p : []).forEach(pid => {
+        const p = P[pid]; if (!p) return; const k = PL.normCo(p.co);
+        const c = C[k] || (C[k] = { k, name: label[k] || p.co, m: 0, w: 0, pd: 0, players: new Set() });
+        c.m++; c.pd += d; if (d > 0) c.w++; c.players.add(pid);
+      }));
+    }));
+    return Object.values(C).map(c => Object.assign(c, { pct: c.m ? c.w / c.m : 0, avg: c.m ? c.pd / c.m : 0, n: c.players.size }))
+      .sort((a, b) => b.pct - a.pct || b.avg - a.avg);
+  }
+  function companyBox(big) {
+    const L = companyStandings();
+    if (!L.length) return '';
+    return `<section class="scr-cos ${big ? 'big' : ''}"><h2>Classement des sociétés <small>% de victoires par joueur · retraités avec leur société</small></h2>
+      <div class="scr-cos-row">${L.map((c, i) => `<div class="co"><span class="co-rk">${i + 1}</span><b>${esc(c.name)}</b><span class="co-pct">${Math.round(c.pct * 100)}%</span>
+        <span class="co-bar"><i style="width:${Math.round(c.pct * 100)}%"></i></span><small>${c.n} joueur${c.n > 1 ? 's' : ''} · ${c.avg >= 0 ? '+' : ''}${c.avg.toFixed(1)} pts/match</small></div>`).join('')}</div></section>`;
+  }
+
   // ----- Écran géant (?ecran ou #ecran) -----
   function vScreen() {
     const T = tById(), P = pById();
@@ -367,7 +393,7 @@
     if (done) {
       return `<div class="scr scr-final"><header class="scr-head"><h1>Classement final</h1><p>Bravo à tous ! · <i>Well played everyone!</i></p></header>
         <div class="scr-podium">${R.slice(0, 3).map((x, i) => `<div class="pod p${i + 1}"><span class="pod-n">${i + 1}</span><b>Équipe ${String(x.num).padStart(2, '0')}</b><span>${teamNames(T[x.id])}</span><small>${x.w} victoires · ${Math.round(x.elo)} pts</small></div>`).join('')}</div>
-        ${rankBox(R.length, 'Classement final')}</div>`;
+        ${companyBox(true)}${rankBox(R.length, 'Classement final')}</div>`;
     }
     const sc = PL.schedule(state.cfg, Math.max(state.cfg.rounds, r.n + 1))[r.n];
     const ms = r.matches.slice().sort((a, b) => a.terrain - b.terrain);
@@ -376,7 +402,7 @@
         <div class="scr-clock">${r.startedAt ? `<span class="clock" data-clock="${r.startedAt}">--:--</span>` : '<span class="muted">chrono en attente</span>'}</div></header>
       <div class="scr-body"><section class="scr-matches">${ms.map(m => { const res = resultFor(m); return `<div class="scr-m ${res && res.status === 'validated' ? 'fin' : ''}"><div class="scr-t">T${m.terrain}${surfaceOf(m.terrain) ? ` <small>${esc(surfaceOf(m.terrain))}</small>` : ''}</div>
           <div class="scr-a"><b>${String(T[m.a].num).padStart(2, '0')}</b> ${sn(m.a)}</div>${score(res)}<div class="scr-b"><b>${String(T[m.b].num).padStart(2, '0')}</b> ${sn(m.b)}</div></div>`; }).join('')}
-          ${r.bye ? `<div class="scr-m"><div class="scr-t">BYE</div><div class="scr-a">${sn(r.bye)}</div></div>` : ''}</section>
+          ${r.bye ? `<div class="scr-m"><div class="scr-t">BYE</div><div class="scr-a">${sn(r.bye)}</div></div>` : ''}${companyBox(false)}</section>
         ${rankBox(R.length, 'Classement')}</div></div>`;
   }
 
