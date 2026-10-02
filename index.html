@@ -126,6 +126,19 @@ html.gestion .top{padding-block:6px}html.gestion .brand small{display:none}
 .memo summary{font-weight:800;font-size:.95rem}
 .memo ul,.memo ol{margin:6px 0 4px;padding-left:20px;display:flex;flex-direction:column;gap:5px;font-size:12.5px;line-height:1.4}
 .memo p{margin:4px 0}
+.memo .btn{margin:4px 0}
+.prompter{position:fixed;inset:0;z-index:50;background:#fff;color:#111;padding:20px 4vw 30px;overflow:auto;display:flex;flex-direction:column;gap:10px}
+.pr-bar{position:sticky;top:-20px;background:#fff;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:8px 0;border-bottom:2px solid #111}
+.pr-pos{font-size:1.4rem;font-weight:800;font-variant-numeric:tabular-nums}
+.pr-title{font-size:2.6rem;margin:6px 0 0;color:#C8102E;text-transform:none;letter-spacing:0}
+.pr-list{margin:0;padding-left:3.2rem;display:flex;flex-direction:column;gap:18px;font-size:2.1rem;line-height:1.35}
+.pr-list li{cursor:pointer;color:#6b6b6b;transition:color .2s}
+.pr-list li.done{color:#bdbdbd}
+.pr-list li.cur{color:#111;font-size:2.6rem;background:#fff4c2;border-radius:10px;padding:8px 14px;margin-left:-14px}
+.pr-list li::marker{font-weight:800}
+.pr-after{font-size:1.5rem;font-weight:700;border-top:2px solid #ddd;padding-top:12px;margin:8px 0 0}
+.pr-help{color:#777;font-size:1rem;margin:0}
+@media (prefers-reduced-motion:reduce){.pr-list li{transition:none}}
 .g-teams{display:grid;grid-template-columns:repeat(2,1fr);gap:3px 14px;font-size:12px}
 @media (max-width:1100px){.g-grid{grid-template-columns:1fr 1fr}.g-col:last-child{grid-column:1/-1}}
 /* ===== Écran géant (?ecran) : fond blanc pour projecteur, gros caractères, sans navigation ===== */

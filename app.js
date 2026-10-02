@@ -230,7 +230,7 @@
         <select id="c_rank" style="display:none"><option value="${c.rankMode || 'wins'}" selected></option></select>
         <button type="button" class="btn sm ghost" data-act="savecfg">Enregistrer</button>
         <p class="muted small">${sc.map(x => `T${x.n} ${x.start}`).join(' · ')}</p></section>
-      ${memoBox(arrived.length, sc)}`;
+      ${memoBox(arrived.length)}`;
     // colonne 2 : matchs du tour
     let c2 = '';
     if (r) {
@@ -262,41 +262,68 @@
       const R = ranked();
       c3 = `<section class="card"><h3>Classement</h3><table class="g-rank"><tbody>${R.map(x => `<tr class="click" data-act="sheet" data-id="${x.id}"><td class="c-rk">${x.rank}</td><td><b>${String(x.num).padStart(2, '0')}</b> <span class="small">${teamNames(T[x.id], true)}</span></td><td>${pastLine(x)}</td><td class="n"><b>${x.w}-${x.l}</b></td><td class="n muted">${Math.round(x.elo)}</td><td class="n muted">${x.diff > 0 ? '+' : ''}${x.diff}</td></tr>`).join('')}</tbody></table></section>`;
     }
-    return h + `<div class="g-grid"><div class="g-col">${c1}</div><div class="g-col">${c2}</div><div class="g-col">${c3}</div></div>`;
+    return h + `<div class="g-grid"><div class="g-col">${c1}</div><div class="g-col">${c2}</div><div class="g-col">${c3}</div></div>` + prompterHtml(arrived.length);
   }
 
   // aide-mémoire organisateur : arrivée des joueurs + discours de lancement (valeurs du tournoi en direct)
   const openMemo = new Set(['arr']);
-  function memoBox(nArr, sc) {
-    const c = state.cfg, last = sc[c.rounds - 1];
+  let prompter = null, pIdx = 0;
+  function memoData(nArr) {
+    const c = state.cfg, sc = PL.schedule(c, c.rounds), last = sc[c.rounds - 1];
     const nTeams = state.teams.length || Math.floor(nArr / 2);
     const cos = [...new Set(state.players.filter(here).map(p => PL.normCo(p.co)))].length || 5;
-    const d = (k, title, body) => `<details class="memo" data-memo="${k}" ${openMemo.has(k) ? 'open' : ''}><summary>${title}</summary>${body}</details>`;
-    const arr = `<ul>
-      <li><b>Scannez le QR code</b> (affiche) ou ouvrez <b>petanque-tdt.github.io</b></li>
-      <li>Onglet <b>Mon match</b> : cherchez votre nom → <b>« Je suis là »</b>. <b>Sans pointage, pas de tirage !</b></li>
-      <li>Vérifiez la <b>société</b> affichée (homonymes)</li>
-      <li>Vous pouvez <b>pointer un collègue</b> qui est avec vous</li>
-      <li>Bouton <b>FR / EN</b> en haut à droite (<i>for English speakers</i>)</li>
-      <li>Pas de smartphone / batterie vide → <b>venez me voir</b>, je vous pointe</li></ul>
-      <p class="small"><b>Pour toi vers ${esc(c.start.replace(':', 'h'))} − 10 min :</b> appelle les « Encore attendus » ci-dessus, vérifie les binômes incomplets, puis tire les équipes.</p>`;
-    const sp = `<ol>
-      <li><b>Bienvenue !</b> ${nArr} joueurs, ${cos} sociétés : on se mélange et on passe une belle soirée.</li>
-      <li><b>Équipes</b> : binômes choisis gardés, les autres tirés au sort en mélangeant les sociétés. Tirage maintenant → votre équipe apparaît dans <b>Mon match</b>.</li>
-      <li><b>Format</b> : ${nTeams} équipes en doublette, 3 boules par joueur (triplette éventuelle : 2 boules chacun).</li>
-      <li><b>Timing</b> : ${c.rounds} tours, de ${esc(c.start.replace(':', 'h'))} à ~${last ? last.end : ''}. ${c.matchMin} min de jeu, ${c.pauseMin} min de pause. Le timing peut être adapté en cours de route, et on ajoutera peut-être un tour.</li>
-      <li><b>Fin d'un match</b> : dès <b>13 points</b>, ou au <b>coup de sifflet</b> → on finit la mène en cours. Égalité → <b>une mène décisive</b>. Jamais de nul.</li>
-      <li><b>Scores</b> : mettez-les à jour <b>pendant le match</b> (tout le monde suit en direct). À la fin : <b>« Envoyer le score final »</b>, l'adversaire <b>confirme</b>. Désaccord → « Contester », je tranche.</li>
-      <li><b>Appariements</b> : à chaque tour, contre une équipe au même nombre de victoires, jamais deux fois la même, si possible d'une autre société. Les terrains et surfaces tournent.</li>
-      <li><b>Classement</b> : victoires, puis points Elo (battre une équipe forte rapporte plus), puis force des adversaires. Touchez une équipe pour voir ses matchs.</li>
-      <li><b>Spectateurs / apéro</b> : onglet <b>Direct</b> et l'écran géant → tous les matchs et scores en direct.</li>
-      <li><b>Entre deux tours</b> : regardez votre <b>nouveau terrain</b> dans l'app, rangez boules et cochonnet.</li>
-      <li><b>Fair-play</b> : ~1 min par boule, on ne ramasse rien avant la mesure, on s'écarte quand l'autre joue.</li>
-      <li><b>Merci</b> à l'équipe d'organisation → <b>tirage</b> et bonne partie !</li></ol>
-      <p class="small"><b>Ensuite :</b> Tirer les équipes → ajuster si besoin → Générer tour 1 → Démarrer chrono → coup de sifflet.</p>`;
-    const end = `<ul><li>Annoncer le <b>podium</b> (écran géant : classement final automatique)</li><li>Remercier les participants, l'orga, le lieu</li><li>Rappel : ranger boules et terrains</li></ul>`;
-    return `<section class="card memo-card"><h3>Aide-mémoire</h3>
-      ${d('arr', "Pendant l'arrivée", arr)}${d('sp', 'Discours de lancement', sp)}${d('end', 'Fin du tournoi', end)}</section>`;
+    const st = esc(c.start.replace(':', 'h'));
+    return {
+      arr: { title: "Pendant l'arrivée", items: [
+        '<b>Scannez le QR code</b> sur l\'affiche, ou ouvrez <b>petanque-tdt.github.io</b>',
+        'Onglet <b>Mon match</b> : cherchez votre nom, puis <b>« Je suis là »</b>',
+        '<b>Sans pointage, pas de tirage !</b>',
+        'Vérifiez la <b>société</b> affichée à côté de votre nom (homonymes)',
+        'Vous pouvez <b>pointer un collègue</b> qui est avec vous',
+        'Bouton <b>FR / EN</b> en haut à droite — <i>for English speakers</i>',
+        'Pas de smartphone ou plus de batterie ? <b>Venez me voir</b>, je vous pointe'],
+        after: `Vers ${st} moins 10 min : appeler les « Encore attendus », vérifier les binômes incomplets, puis tirer les équipes.` },
+      sp: { title: 'Discours de lancement', items: [
+        `<b>Bienvenue !</b> ${nArr} joueurs, ${cos} sociétés : on se mélange et on passe une belle soirée.`,
+        '<b>Les équipes</b> : binômes choisis gardés, les autres tirés au sort en mélangeant les sociétés. Tirage maintenant → votre équipe apparaît dans <b>Mon match</b>.',
+        `<b>Format</b> : ${nTeams} équipes en doublette, 3 boules par joueur. Triplette éventuelle : 2 boules chacun.`,
+        `<b>Timing</b> : ${c.rounds} tours, de ${st} à environ ${last ? last.end : ''}. ${c.matchMin} min de jeu, ${c.pauseMin} min de pause. Adaptable en cours de route, peut-être un tour de plus.`,
+        '<b>Fin d\'un match</b> : dès <b>13 points</b>, ou au <b>coup de sifflet</b> → on finit la mène en cours. Égalité → <b>une mène décisive</b>. Jamais de nul.',
+        '<b>Les scores</b> : mettez-les à jour <b>pendant le match</b>, tout le monde suit en direct. À la fin : <b>« Envoyer le score final »</b>, l\'adversaire <b>confirme</b>. Désaccord → « Contester », je tranche.',
+        '<b>Les adversaires</b> : à chaque tour, une équipe au même nombre de victoires, jamais deux fois la même, si possible d\'une autre société. Les terrains tournent.',
+        '<b>Le classement</b> : victoires, puis points Elo (battre une équipe forte rapporte plus), puis force des adversaires. Touchez une équipe pour voir ses matchs.',
+        '<b>Spectateurs</b> : onglet <b>Direct</b> et écran géant → tous les matchs et scores en direct.',
+        '<b>Entre deux tours</b> : regardez votre <b>nouveau terrain</b> dans l\'app, rangez boules et cochonnet.',
+        '<b>Fair-play</b> : environ 1 min par boule, on ne ramasse rien avant la mesure, on s\'écarte quand l\'autre joue.',
+        '<b>Merci</b> à l\'équipe d\'organisation → <b>tirage</b> et bonne partie !'],
+        after: 'Ensuite : Tirer les équipes → ajuster si besoin → Générer tour 1 → Démarrer chrono → coup de sifflet.' },
+      end: { title: 'Fin du tournoi', items: [
+        'Annoncer le <b>podium</b> — l\'écran géant affiche le classement final automatiquement',
+        'Remercier les <b>participants</b>, l\'<b>équipe d\'organisation</b> et le <b>lieu</b>',
+        'Rappel : <b>ranger les boules et les terrains</b>'], after: '' }
+    };
+  }
+  function memoBox(nArr) {
+    const D = memoData(nArr);
+    const sec = k => `<details class="memo" data-memo="${k}" ${openMemo.has(k) ? 'open' : ''}><summary>${D[k].title}</summary>
+      <button type="button" class="btn sm" data-act="prompt" data-k="${k}">Lire en grand ⤢</button>
+      <${k === 'sp' ? 'ol' : 'ul'}>${D[k].items.map(x => `<li>${x}</li>`).join('')}</${k === 'sp' ? 'ol' : 'ul'}>${D[k].after ? `<p class="small"><b>${D[k].after}</b></p>` : ''}</details>`;
+    return `<section class="card memo-card"><h3>Aide-mémoire</h3>${sec('arr')}${sec('sp')}${sec('end')}</section>`;
+  }
+  // mode prompteur : plein écran, gros caractères, point courant surligné (flèches / espace / Échap)
+  function prompterHtml(nArr) {
+    if (!prompter) return '';
+    const D = memoData(nArr)[prompter], n = D.items.length;
+    pIdx = Math.max(0, Math.min(pIdx, n - 1));
+    const tabs = [['arr', 'Arrivée'], ['sp', 'Discours'], ['end', 'Fin']];
+    return `<div class="prompter" role="dialog" aria-modal="true">
+      <div class="pr-bar"><div class="row">${tabs.map(([k, l]) => `<button type="button" class="pchip ${prompter === k ? 'sel' : ''}" data-act="prompt" data-k="${k}">${l}</button>`).join('')}</div>
+        <span class="pr-pos">${pIdx + 1} / ${n}</span>
+        <div class="row"><button type="button" class="btn sm ghost" data-act="pmove" data-d="-1">◀ Précédent</button><button type="button" class="btn sm" data-act="pmove" data-d="1">Suivant ▶</button><button type="button" class="btn sm ghost" data-act="pclose">Fermer ✕</button></div></div>
+      <h2 class="pr-title">${D.title}</h2>
+      <ol class="pr-list">${D.items.map((x, i) => `<li class="${i === pIdx ? 'cur' : i < pIdx ? 'done' : ''}" data-act="pgo" data-i="${i}">${x}</li>`).join('')}</ol>
+      ${D.after ? `<p class="pr-after">${D.after}</p>` : ''}
+      <p class="pr-help">Flèches ← → ou espace pour avancer · Échap pour fermer · clic sur un point pour y aller</p></div>`;
   }
 
   // ----- Écran géant (?ecran ou #ecran) -----
@@ -711,6 +738,14 @@
       scheduleLive(el.dataset.score);
     }
   });
+  function scrollCur() { const el = document.querySelector('.pr-list li.cur'); if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+  document.addEventListener('keydown', e => {
+    if (!prompter) return;
+    if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+    if (['ArrowRight', 'ArrowDown', 'PageDown', ' '].includes(e.key)) { e.preventDefault(); pIdx++; render(); scrollCur(); }
+    else if (['ArrowLeft', 'ArrowUp', 'PageUp'].includes(e.key)) { e.preventDefault(); pIdx--; render(); scrollCur(); }
+    else if (e.key === 'Escape') { prompter = null; render(); }
+  });
   document.addEventListener('toggle', e => { const el = e.target; if (el.dataset && el.dataset.memo) { if (el.open) openMemo.add(el.dataset.memo); else openMemo.delete(el.dataset.memo); } }, true);
   document.addEventListener('focusin', e => { if (e.target.dataset && e.target.dataset.score) { try { e.target.select(); } catch (x) { } } });
   document.addEventListener('change', e => { const el = e.target; if (el.dataset && el.dataset.act === 'present') actions.present(el, el.dataset.id); });
@@ -745,6 +780,10 @@
       store.setResult(id, { a: m.a, b: m.b, sa, sb, by: myTeam, status: 'live', at });
     },
     livesort(el) { liveSort = el.dataset.k; render(); },
+    prompt(el) { if (prompter !== el.dataset.k) pIdx = 0; prompter = el.dataset.k; render(); scrollCur(); },
+    pmove(el) { pIdx += Number(el.dataset.d); render(); scrollCur(); },
+    pgo(el) { pIdx = Number(el.dataset.i); render(); scrollCur(); },
+    pclose() { prompter = null; render(); },
     checkin(el, id) {
       const on = el.dataset.on === '1';
       if (on && !ls.get('me')) ls.set('me', id);
